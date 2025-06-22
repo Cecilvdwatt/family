@@ -10,7 +10,7 @@ import org.springframework.http.ResponseEntity;
 public class PersonsController implements PersonsApi {
 
     @Override
-    public ResponseEntity<Void> personsHasPartnerChildrenCheckPost(Person person) {
+    public ResponseEntity<Void> personsCheckPartnerChildrenPost(Person person) {
         return null;
     }
 }

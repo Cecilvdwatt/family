@@ -1,0 +1,6 @@
+To setup docker run:
+
+mvn clean install -U -DskipTests
+docker compose up -d --build --remove-orphans
+
+from the integration folder.

@@ -1,9 +1,23 @@
 services:
   sqlserver:
-    image: 'mcr.microsoft.com/mssql/server:latest'
+    image: mcr.microsoft.com/mssql/server:2022-latest
     environment:
-      - 'ACCEPT_EULA=yes'
-      - 'MSSQL_PID=express'
-      - 'MSSQL_SA_PASSWORD=verYs3cret'
+      ACCEPT_EULA: "Y"
+      SA_PASSWORD: "verYs3cret"
+      MSSQL_PID: "Express"
     ports:
-      - '1433'
+      - "1433:1433"
+    healthcheck:
+      test: [ "CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/1433' || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: ./app
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
