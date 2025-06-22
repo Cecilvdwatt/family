@@ -1,0 +1,81 @@
+openapi: 3.0.3
+info:
+  title: Family Checker API
+  version: 1.0.0
+  description: |
+    An API that used to check if a person meets certain criteria.
+
+paths:
+  /persons/check-partner-children:
+    post:
+      summary: Submit a person record
+      description: >
+        API is used to check if the submitted details:
+        
+        1. Matches a person record in the database.
+        2. The matched person has a partner.
+        3. The matched person has exactly 3 children, all of whom list the same partner (from point 2) as the other parent.
+        4. At least one of the children (from point 3) is under 18 years of age.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Person'
+      responses:
+        # Design Note:
+        ##############
+        # Usually I'd use a 204 for this response since no content will be sent back.
+        # Using 200 has requested in the specification. There is a larger discussion around response code adequacy
+        # but for the most part I see response codes as part of "contact" between caller and receiver, and although
+        # more specific response codes could be used, so long as both parties have an understanding of what to expect
+        # then it's fine.
+        # For example, we could return a 404 if the person has no record, but for some this might cause confusion as they
+        # consider a 404 to be exclusively for if the API endpoint doesn't exist.
+        '200': # ok
+          description:
+            The response code returned if - 
+            The person submitted in the API has 3 children with their partner and one of the children is under 18.
+        '444': # NO RESPONSE
+          description:
+            The response code returned if -
+            If the person has no record, no partner, does not have 3 children or none of their children is
+            under 18.
+components:
+  schemas:
+    # Design note:
+    ##############
+    # Keeping the Person record reasonably simple for this assignment.
+    # The more data we do send about this person the better we can do "best match" checking
+    # in case some of the details are wrong (for example a typo in the BSN or name).
+    # For the same of this assignment I'm keeping it simple and will primarily use the BSN for lookup
+    # purposes.
+    Person:
+      type: object
+      required:
+        - bsn
+        - name
+        - surname
+        - dateOfBirth
+      properties:
+        # Design note:
+        ##############
+        # Did a bit of googling on this one. Hopefully it's correct.
+        bsn:
+          type: string
+          pattern: '^\d{9}$'
+          example: "123456782"
+          description: 9-Digit Dutch Burgerservicenummer.
+        name:
+          type: string
+          example: "Jane"
+          description: The first name of the person.
+        surname:
+          type: string
+          example: "Doe"
+          description: the surname / family name of the person.
+        dateOfBirth:
+          type: string
+          format: date
+          example: "1990-05-20"
+          description: Date of birth in YYYY-MM-DD format.
