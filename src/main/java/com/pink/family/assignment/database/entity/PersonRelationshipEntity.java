@@ -39,4 +39,10 @@ public class PersonRelationship {
     @Enumerated(EnumType.STRING)
     @Column(name = "relationship_type")
     private RelationshipType relationshipType;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "inverse_relationship_type")
+    private RelationshipType inversRelationshipType;
+
+
 }

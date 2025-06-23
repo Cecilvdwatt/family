@@ -40,6 +40,7 @@ public class Person {
 
     @OneToMany(mappedBy = "person", cascade = CascadeType.ALL, orphanRemoval = true)
     @ToString.Exclude
+    @Builder.Default
     private Set<PersonRelationship> relationships = new HashSet<>();
 
     public Person(Long id, String bsn, String name, String surname, LocalDate dateOfBirth) {
@@ -60,14 +61,27 @@ public class Person {
         this.relationships = relationships != null ? relationships : new HashSet<>();
     }
 
-    public void addRelationship(Person relatedPerson, RelationshipType type) {
-        PersonRelationship rel = new PersonRelationship(
-            new PersonRelationshipId(this.id, relatedPerson.getId()),
-            this,
-            relatedPerson,
-            type
-        );
-        relationships.add(rel);
+    public void addRelationship(Person related, RelationshipType type, RelationshipType inverseType) {
+        if (this.getId() == null || related.getId() == null) {
+            throw new IllegalStateException(
+                "Both persons must have non-null IDs before adding relationship. Ensure entities have been saved first.");
+        }
+
+        PersonRelationship rel = new PersonRelationship();
+        rel.setPerson(this);
+        rel.setRelatedPerson(related);
+        rel.setRelationshipType(type);
+        rel.setInversRelationshipType(inverseType);
+        rel.setId(new PersonRelationshipId(this.getId(), related.getId()));
+        this.relationships.add(rel);
+
+        PersonRelationship inverse = new PersonRelationship();
+        inverse.setPerson(related);
+        inverse.setRelatedPerson(this);
+        inverse.setRelationshipType(inverseType);
+        inverse.setInversRelationshipType(type);
+        inverse.setId(new PersonRelationshipId(related.getId(), this.getId()));
+        related.relationships.add(inverse);
     }
 
     @Override
