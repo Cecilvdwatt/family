@@ -3,7 +3,6 @@ package com.pink.family.assignment.database.mapper;
 import com.pink.family.assignment.database.entity.PersonEntity;
 import com.pink.family.assignment.database.entity.enums.RelationshipType;
 import com.pink.family.assignment.dto.PersonDto;
-import com.pink.family.assignment.monitoring.metrics.annotation.SanitizerMeasure;
 import jakarta.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.CollectionUtils;
@@ -30,7 +29,6 @@ public class PersonMapper {
      * @param relationshipFilter
      * Relationships to include. If empty includes all.
      */
-    @SanitizerMeasure
     public static PersonDto toDto(
         @Nullable PersonEntity person,
         @Nullable Set<RelationshipType> relationshipFilter,

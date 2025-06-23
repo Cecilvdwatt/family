@@ -1,4 +1,4 @@
-package com.pink.family.assignment.exception;
+package com.pink.family.assignment.api.exception;
 
 import lombok.Getter;
 

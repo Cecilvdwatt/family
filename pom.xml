@@ -177,30 +177,31 @@
 				<artifactId>openapi-generator-maven-plugin</artifactId>
 				<version>${openapi-generator-maven-plugin.version}</version>
 				<executions>
-					<execution>
-						<id>generate-java-client</id>
-						<goals>
-							<goal>generate</goal>
-						</goals>
-						<configuration>
-							<inputSpec>${project.basedir}/spec/family-api.yaml</inputSpec>
-							<generatorName>java</generatorName>
-							<apiPackage>com.pink.family.api.rest.client.reference</apiPackage>
-							<modelPackage>com.pink.family.api.rest.client.model</modelPackage>
-							<output>${project.build.directory}/generated-sources/openapi-client</output>
-							<ignoreFileOverride>${project.basedir}/.openapi-generator-ignore</ignoreFileOverride>
-							<configOptions>
-								<library>restclient</library>
-								<useSpringBoot3>true</useSpringBoot3>
-								<jakarta>true</jakarta>
-								<dateLibrary>java8</dateLibrary>
-								<useJakartaValidation>true</useJakartaValidation>
-								<apiTests>false</apiTests>
-								<modelTests>false</modelTests>
-								<generateTests>false</generateTests>
-							</configOptions>
-						</configuration>
-					</execution>
+					<!-- execution step for generating client code from swagger -->
+<!--					<execution>-->
+<!--						<id>generate-java-client</id>-->
+<!--						<goals>-->
+<!--							<goal>generate</goal>-->
+<!--						</goals>-->
+<!--						<configuration>-->
+<!--							<inputSpec>${project.basedir}/spec/family-api.yaml</inputSpec>-->
+<!--							<generatorName>java</generatorName>-->
+<!--							<apiPackage>com.pink.family.api.rest.client.reference</apiPackage>-->
+<!--							<modelPackage>com.pink.family.api.rest.client.model</modelPackage>-->
+<!--							<output>${project.build.directory}/generated-sources/openapi-client</output>-->
+<!--							<ignoreFileOverride>${project.basedir}/.openapi-generator-ignore</ignoreFileOverride>-->
+<!--							<configOptions>-->
+<!--								<library>restclient</library>-->
+<!--								<useSpringBoot3>true</useSpringBoot3>-->
+<!--								<jakarta>true</jakarta>-->
+<!--								<dateLibrary>java8</dateLibrary>-->
+<!--								<useJakartaValidation>true</useJakartaValidation>-->
+<!--								<apiTests>false</apiTests>-->
+<!--								<modelTests>false</modelTests>-->
+<!--								<generateTests>false</generateTests>-->
+<!--							</configOptions>-->
+<!--						</configuration>-->
+<!--					</execution>-->
 					<execution>
 						<id>generate-java-server</id>
 						<goals>

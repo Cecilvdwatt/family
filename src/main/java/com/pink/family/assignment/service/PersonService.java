@@ -90,7 +90,7 @@ public class PersonService {
             return "Duplicate Matches for %s %s %s".formatted(name, surname, dateOfBirth);
         }
 
-        // the orElseThrow here is just for the compiler, we do a check above so we know there is at least
+        // the orElseThrow here is just for the compiler, we do a check above, so we know there is at least
         // 1 record.
         return hasPartnerAndChildren(persons.stream().findFirst().orElseThrow());
 

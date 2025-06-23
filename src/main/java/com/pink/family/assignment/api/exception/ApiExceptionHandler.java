@@ -1,4 +1,4 @@
-package com.pink.family.assignment.exception;
+package com.pink.family.assignment.api.exception;
 
 import com.pink.family.api.rest.server.model.ErrorResponse;
 import com.pink.family.assignment.service.LoggingService;

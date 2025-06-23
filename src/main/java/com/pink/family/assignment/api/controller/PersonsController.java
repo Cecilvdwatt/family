@@ -2,7 +2,7 @@ package com.pink.family.assignment.api.controller;
 
 import com.pink.family.api.rest.server.model.PersonRequest;
 import com.pink.family.api.rest.server.reference.PersonsApi;
-import com.pink.family.assignment.exception.PinkApiException;
+import com.pink.family.assignment.api.exception.PinkApiException;
 import com.pink.family.assignment.service.LoggingService;
 import com.pink.family.assignment.service.PersonService;
 import lombok.RequiredArgsConstructor;
