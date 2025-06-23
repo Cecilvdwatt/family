@@ -4,40 +4,52 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pink.family.api.rest.server.model.PersonRequest;
 import com.pink.family.assignment.database.entity.PersonEntity;
 import com.pink.family.assignment.database.entity.enums.RelationshipType;
+import com.pink.family.assignment.database.repository.PersonRelationshipRepository;
 import com.pink.family.assignment.database.repository.PersonRepository;
-import com.pink.family.assignment.service.PersonService;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.DistributionSummary;
+import io.micrometer.core.instrument.FunctionCounter;
+import io.micrometer.core.instrument.FunctionTimer;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.LongTaskTimer;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Statistic;
+import io.micrometer.core.instrument.Timer;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
-import org.springframework.test.annotation.Commit;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.transaction.annotation.Transactional;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.hamcrest.Matchers.is;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.StreamSupport;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @Slf4j
-@SpringBootTest
+@SpringBootTest(properties = {
+    "logging.level.com.pink.family=INFO"
+})
 @AutoConfigureMockMvc
-@Transactional // reset the h2 data
-class PersonsControllerIT {
+class PersonsControllerConcurrency {
+
+    @Autowired
+    private MeterRegistry meterRegistry;
 
     @Autowired
     private MockMvc mockMvc;
@@ -46,321 +58,324 @@ class PersonsControllerIT {
     private PersonRepository personRepository;
 
     @Autowired
+    private PersonRelationshipRepository personRelationshipRepository;
+
+    @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     @BeforeEach
     void setUp() {
-        personRepository.deleteAll(); // reset database between tests
+        personRelationshipRepository.deleteAll();
+        personRelationshipRepository.flush();
+
+        personRepository.deleteAll();
+        personRepository.flush();
+
+        meterRegistry.clear();
     }
 
     @Test
-    @DisplayName("Should return 200 when a person has a partner and exactly 3 children with the same partner")
-    void shouldReturn200_WhenPartnerAnd3ChildrenExist() throws Exception {
-        PersonEntity main = PersonEntity.builder()
-            .name("John")
-            .surname("Doe")
-            .bsn("123456789")
-            .dateOfBirth(LocalDate.of(1990, 5, 20))
-            .build();
+    void concurrencySimpleSuccess() throws Exception {
+        TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
+        txTemplate.execute(status -> {
+            personRelationshipRepository.deleteAll();
+            personRelationshipRepository.flush();
 
-        PersonEntity partner = PersonEntity.builder()
-            .name("Jane")
-            .surname("Doe")
-            .bsn("987654321")
-            .dateOfBirth(LocalDate.of(1988, 3, 15))
-            .build();
+            personRepository.deleteAll();
+            personRepository.flush();
 
-        PersonEntity child1 = createChild("Child1", LocalDate.of(2010, 1, 1));
-        PersonEntity child2 = createChild("Child2", LocalDate.of(2012, 2, 2));
-        // make sure the child is under 18
-        PersonEntity child3 = createChild("Child3", LocalDate.of(LocalDate.now().getYear() - 10, 3, 3));
+            PersonEntity main = PersonEntity.builder()
+                .name("Jane")
+                .surname("Doe")
+                .bsn("123456789")
+                .dateOfBirth(LocalDate.of(1990, 5, 20))
+                .build();
 
-        // Save all first to get IDs assigned
-        main = personRepository.save(main);
-        partner = personRepository.save(partner);
-        child1 = personRepository.save(child1);
-        child2 = personRepository.save(child2);
-        child3 = personRepository.save(child3);
+            PersonEntity partner = PersonEntity.builder()
+                .name("John")
+                .surname("Doe")
+                .bsn("987654321")
+                .dateOfBirth(LocalDate.of(1988, 3, 15))
+                .build();
 
-        // Add relationships after IDs are assigned
-        main.addRelationship(partner, RelationshipType.PARTNER, RelationshipType.PARTNER);
-        main.addRelationship(child1, RelationshipType.CHILD, RelationshipType.FATHER);
-        main.addRelationship(child2, RelationshipType.CHILD, RelationshipType.FATHER);
-        main.addRelationship(child3, RelationshipType.CHILD, RelationshipType.FATHER);
+            PersonEntity child1 = createChild("Child1", LocalDate.of(2010, 1, 1));
+            PersonEntity child2 = createChild("Child2", LocalDate.of(2012, 2, 2));
+            PersonEntity child3 = createChild("Child3", LocalDate.now().minusYears(10));
 
-        partner.addRelationship(child1, RelationshipType.CHILD, RelationshipType.MOTHER);
-        partner.addRelationship(child2, RelationshipType.CHILD, RelationshipType.MOTHER);
-        partner.addRelationship(child3, RelationshipType.CHILD, RelationshipType.MOTHER);
+            main = personRepository.save(main);
+            partner = personRepository.save(partner);
+            child1 = personRepository.save(child1);
+            child2 = personRepository.save(child2);
+            child3 = personRepository.save(child3);
 
-        // Save all entities again to persist the relationships
-        personRepository.saveAndFlush(main);
-        personRepository.saveAndFlush(partner);
-        personRepository.saveAndFlush(child1);
-        personRepository.saveAndFlush(child2);
-        personRepository.saveAndFlush(child3);
+            main.addRelationship(partner, RelationshipType.PARTNER, RelationshipType.PARTNER);
+            main.addRelationship(child1, RelationshipType.CHILD, RelationshipType.FATHER);
+            main.addRelationship(child2, RelationshipType.CHILD, RelationshipType.FATHER);
+            main.addRelationship(child3, RelationshipType.CHILD, RelationshipType.FATHER);
 
-        // Prepare API request object
-        PersonRequest request = new PersonRequest()
-            .requestId("RQ123")
-            .name("Jane")
-            .surname("Doe")
-            .bsn("123456789")
-            .dateOfBirth(LocalDate.of(1990, 5, 20));
+            partner.addRelationship(child1, RelationshipType.CHILD, RelationshipType.MOTHER);
+            partner.addRelationship(child2, RelationshipType.CHILD, RelationshipType.MOTHER);
+            partner.addRelationship(child3, RelationshipType.CHILD, RelationshipType.MOTHER);
 
-        // Perform POST request and expect 200 OK
-        mockMvc.perform(post("/persons/check-partner-children")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
-            .andExpect(status().isOk());
+            personRepository.saveAndFlush(main);
+            personRepository.saveAndFlush(partner);
+            personRepository.saveAndFlush(child1);
+            personRepository.saveAndFlush(child2);
+            personRepository.saveAndFlush(child3);
+
+            return null;
+        });
+
+        final int[] threadCounts = {1, 10, 100, 1000, 10000};
+
+        for (int threadCount : threadCounts) {
+            ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+            List<Future<Long>> futures = new CopyOnWriteArrayList<>();
+
+            for (int i = 0; i < threadCount; i++) {
+                int finalI = i;
+                futures.add(executor.submit(() -> {
+                    long start = System.nanoTime();
+
+                    PersonRequest request = new PersonRequest()
+                        .requestId("RQ" + finalI)
+                        .name("Jane")
+                        .surname("Doe")
+                        .bsn("123456789")
+                        .dateOfBirth(LocalDate.of(1990, 5, 20));
+
+                    mockMvc.perform(post("/persons/check-partner-children")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                        .andExpect(content().string("")) // body check first
+                        .andExpect(status().isOk());    // then status check 200
+
+                    return System.nanoTime() - start;
+                }));
+            }
+
+            executor.shutdown();
+            executor.awaitTermination(5, TimeUnit.MINUTES);
+
+            long totalTime = 0;
+            for (Future<Long> future : futures) {
+                totalTime += future.get();
+            }
+
+            double avgNanos = (double) totalTime / threadCount;
+            double avgMillis = avgNanos / 1_000_000.0;
+            double avgSeconds = avgMillis / 1000.0;
+
+            log.info(
+                "\n***************************************************" +
+                    "\n***********************************" +
+                    "\n********************" +
+                    "\nAverage response time: {} ms ({} s), Threads: {}, Total Time (ns): {}\n",
+                String.format("%.3f", avgMillis),
+                String.format("%.3f", avgSeconds),
+                threadCount, totalTime);
+
+            outputMicro();
+
+            log.info(
+                "\n********************" +
+                    "\n***********************************" +
+                    "\n***************************************************");
+        }
     }
 
+    private void outputMicro() {
+        // Assuming meterRegistry is already initialized and available
+        meterRegistry.getMeters()
+            .forEach(meter -> {
+                String name = meter.getId().getName();
+                StringBuilder metricOutput = new StringBuilder("Metric: ").append(name);
 
-    @Test
-    @DisplayName("Should return 444 when no partner or children exist")
-    void shouldReturn444_WhenNoPartnerOrChildren() throws Exception {
-        PersonEntity p = personRepository.save(PersonEntity.builder()
-            .bsn("000000000")
-            .name("Lonely")
-            .surname("PersonEntity")
-            .dateOfBirth(LocalDate.of(1990, 1, 1))
-            .build());
+                if (meter instanceof Counter) {
+                    metricOutput.append(" (Counter) = ").append(((Counter) meter).count());
+                } else if (meter instanceof Gauge) {
+                    metricOutput.append(" (Gauge) = ").append(((Gauge) meter).value());
+                } else if (meter instanceof Timer) {
+                    Timer timer = (Timer) meter;
+                    metricOutput.append(" (Timer)");
+                    metricOutput.append(" | Count = ").append(timer.count());
+                    metricOutput.append(" | Total Time (seconds) = ").append(timer.totalTime(getBaseTimeUnit())); // Adjust base unit as needed
+                    metricOutput.append(" | Max (seconds) = ").append(timer.max(getBaseTimeUnit())); // Adjust base unit as needed
+                } else if (meter instanceof DistributionSummary) {
+                    DistributionSummary summary = (DistributionSummary) meter;
+                    metricOutput.append(" (DistributionSummary)");
+                    metricOutput.append(" | Count = ").append(summary.count());
+                    metricOutput.append(" | Total = ").append(summary.totalAmount());
+                    metricOutput.append(" | Max = ").append(summary.max());
+                } else if (meter instanceof LongTaskTimer) {
+                    LongTaskTimer ltt = (LongTaskTimer) meter;
+                    metricOutput.append(" (LongTaskTimer)");
+                    metricOutput.append(" | Active Tasks = ").append(ltt.activeTasks());
+                    metricOutput.append(" | Duration (seconds) = ").append(ltt.duration(getBaseTimeUnit()));
+                } else if (meter instanceof FunctionCounter) {
+                    metricOutput.append(" (FunctionCounter) = ").append(((FunctionCounter) meter).count());
+                } else if (meter instanceof FunctionTimer) {
+                    FunctionTimer ft = (FunctionTimer) meter;
+                    metricOutput.append(" (FunctionTimer)");
+                    metricOutput.append(" | Count = ").append(ft.count());
+                    metricOutput.append(" | Total Time (seconds) = ").append(ft.totalTime(getBaseTimeUnit()));
+                } else {
+                    // For other meter types or if you still want to try extracting a general value
+                    Double value = StreamSupport.stream(meter.measure().spliterator(), false)
+                        .filter(ms -> ms.getStatistic() == Statistic.VALUE || ms.getStatistic() == Statistic.COUNT || ms.getStatistic() == Statistic.TOTAL)
+                        .map(e -> e.getValue())
+                        .findFirst()
+                        .orElse(Double.NaN);
+                    metricOutput.append(" (Unknown/Other Meter Type) = ").append(value);
+                }
+                log.info("\n{}", metricOutput);
+            });
 
-        PersonRequest apiRequest = new PersonRequest()
-            .requestId("REQ444")
-            .bsn("000000000")
-            .name("Lonely")
-            .surname("PersonEntity")
-            .dateOfBirth(LocalDate.of(1990, 1, 1));
+        meterRegistry.clear();
+    }
 
-        mockMvc.perform(post("/persons/check-partner-children")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(apiRequest)))
-            .andExpect(status().is(444))
-            .andExpect(jsonPath("$.code", is("444")))
-            .andExpect(jsonPath("$.message", is(PersonService.Constants.ErrorMsg.NO_PARTNER)))
-            .andExpect(jsonPath("$.requestId", is("REQ444")));
+    private TimeUnit getBaseTimeUnit() {
+        return TimeUnit.SECONDS; // Or whatever your registry's base time unit is
     }
 
     @Test
-    @DisplayName("Should return 444 when person has more than 3 children with partner")
-    void shouldReturn444_WhenMoreThan3ChildrenExist() throws Exception {
-        PersonEntity main = PersonEntity.builder()
-            .name("Anna")
-            .surname("Smith")
-            .bsn("111222333")
-            .dateOfBirth(LocalDate.of(1985, 7, 15))
-            .build();
-        PersonEntity partner = PersonEntity.builder()
-            .name("Mark")
-            .surname("Smith")
-            .bsn("444555666")
-            .dateOfBirth(LocalDate.of(1984, 6, 10))
-            .build();
-        main = personRepository.save(main);
-        partner = personRepository.save(partner);
+    void concurrencyWithVaryingThreadCounts() throws Exception {
+        // Prepare test data once in a transaction
+        TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
+        List<PersonEntity> persons = txTemplate.execute(status -> {
+            personRelationshipRepository.deleteAll();
+            personRelationshipRepository.flush();
+            personRepository.deleteAll();
+            personRepository.flush();
 
-        PersonEntity child1 = personRepository.save(createChild("Child1", LocalDate.of(2005, 1, 1)));
-        PersonEntity child2 = personRepository.save(createChild("Child2", LocalDate.of(2007, 2, 2)));
-        PersonEntity child3 = personRepository.save(createChild("Child3", LocalDate.of(2009, 3, 3)));
-        PersonEntity child4 = personRepository.save(createChild("Child4", LocalDate.of(2011, 4, 4)));
+            List<PersonEntity> created = new ArrayList<>();
+            // Create enough persons to cover max thread count (e.g. 10000)
+            int maxPersons = 10000;
+            for (int i = 0; i < maxPersons; i++) {
+                PersonEntity p = PersonEntity.builder()
+                    .name("Person" + i)
+                    .surname("Doe")
+                    .bsn(String.format("%09d", 100000000 + i))  // safe unique numeric BSN here
+                    .dateOfBirth(LocalDate.of(1990, 1, 1).plusDays(i))
+                    .build();
+                created.add(personRepository.save(p));
+            }
 
-        main.addRelationship(partner, RelationshipType.PARTNER, RelationshipType.PARTNER);
-        main.addRelationship(child1, RelationshipType.CHILD, RelationshipType.FATHER);
-        main.addRelationship(child2, RelationshipType.CHILD, RelationshipType.FATHER);
-        main.addRelationship(child3, RelationshipType.CHILD, RelationshipType.FATHER);
-        main.addRelationship(child4, RelationshipType.CHILD, RelationshipType.FATHER);
+            // Assign partners and create exactly 3 children per pair
+            for (int i = 0; i < created.size() - 1; i += 2) {
+                PersonEntity p1 = created.get(i);
+                PersonEntity p2 = created.get(i + 1);
 
-        partner.addRelationship(child1, RelationshipType.CHILD, RelationshipType.MOTHER);
-        partner.addRelationship(child2,RelationshipType.CHILD, RelationshipType.MOTHER);
-        partner.addRelationship(child3, RelationshipType.CHILD, RelationshipType.MOTHER);
-        partner.addRelationship(child4, RelationshipType.CHILD, RelationshipType.MOTHER);
+                p1.addRelationship(p2, RelationshipType.PARTNER, RelationshipType.PARTNER);
+                p2.addRelationship(p1, RelationshipType.PARTNER, RelationshipType.PARTNER);
+                personRepository.save(p1);
+                personRepository.save(p2);
 
-        personRepository.saveAndFlush(main);
-        personRepository.saveAndFlush(partner);
+                for (int c = 1; c <= 3; c++) {
+                    LocalDate dob = (c == 3) ? LocalDate.now().minusYears(10) : LocalDate.now().minusYears(20 + c);
+                    PersonEntity child = PersonEntity.builder()
+                        .name(p1.getName() + "Child" + c)
+                        .surname(p1.getSurname())
+                        .bsn(generate9DigitString())
+                        .dateOfBirth(dob)
+                        .build();
+                    child = personRepository.save(child);
 
-        PersonRequest request = new PersonRequest()
-            .requestId("RQ999")
-            .name("Anna")
-            .surname("Smith")
-            .bsn("111222333")
-            .dateOfBirth(LocalDate.of(1985, 7, 15));
+                    p1.addRelationship(child, RelationshipType.CHILD, RelationshipType.FATHER);
+                    p2.addRelationship(child, RelationshipType.CHILD, RelationshipType.MOTHER);
 
-        mockMvc.perform(post("/persons/check-partner-children")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
-            .andExpect(status().is(444))
-            .andExpect(jsonPath("$.code", is("444")))
-            .andExpect(jsonPath("$.message", is(PersonService.Constants.ErrorMsg.NO_CHILDREN)))
-            .andExpect(jsonPath("$.requestId", is("RQ999")));
-    }
+                    child.addRelationship(p1, RelationshipType.FATHER, RelationshipType.CHILD);
+                    child.addRelationship(p2, RelationshipType.MOTHER, RelationshipType.CHILD);
 
-    @Test
-    @DisplayName("Should return 444 when children have different partners")
-    void shouldReturn444_WhenChildrenHaveDifferentPartners() throws Exception {
-        PersonEntity main = PersonEntity.builder()
-            .name("Emma")
-            .surname("Johnson")
-            .bsn("222333444")
-            .dateOfBirth(LocalDate.of(1987, 8, 20))
-            .build();
-        PersonEntity partner1 = PersonEntity.builder()
-            .name("Liam")
-            .surname("Johnson")
-            .bsn("555666777")
-            .dateOfBirth(LocalDate.of(1986, 7, 10))
-            .build();
-        PersonEntity partner2 = PersonEntity.builder()
-            .name("Noah")
-            .surname("Johnson")
-            .bsn("888999000")
-            .dateOfBirth(LocalDate.of(1985, 5, 5))
-            .build();
+                    personRepository.save(child);
+                }
+                personRepository.save(p1);
+                personRepository.save(p2);
+            }
+            personRepository.flush();
+            return created;
+        });
 
-        main = personRepository.save(main);
-        partner1 = personRepository.save(partner1);
-        partner2 = personRepository.save(partner2);
+        // Test with varying thread counts
+        int[] threadCounts = {1, 10, 100, 1000, 10000};
 
-        PersonEntity child1 = personRepository.save(createChild("Child1", LocalDate.of(2008, 3, 3)));
-        PersonEntity child2 = personRepository.save(createChild("Child2", LocalDate.of(2010, 4, 4)));
-        PersonEntity child3 = personRepository.save(createChild("Child3", LocalDate.of(2012, 5, 5)));
+        for (int threadCount : threadCounts) {
+            // Use only as many persons as threadCount (for the test)
+            List<PersonEntity> testPersons = persons.subList(0, threadCount);
 
-        main.addRelationship(partner1, RelationshipType.PARTNER, RelationshipType.PARTNER);
-        main.addRelationship(child1, RelationshipType.CHILD, RelationshipType.FATHER);
-        main.addRelationship(child2, RelationshipType.CHILD, RelationshipType.FATHER);
-        main.addRelationship(child3, RelationshipType.CHILD, RelationshipType.FATHER);
+            ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+            List<Future<Long>> futures = new CopyOnWriteArrayList<>();
 
-        // Different partners for children
-        partner1.addRelationship(child1, RelationshipType.CHILD, RelationshipType.MOTHER);
-        partner2.addRelationship(child2, RelationshipType.CHILD, RelationshipType.MOTHER);
-        partner1.addRelationship(child3, RelationshipType.CHILD, RelationshipType.MOTHER);
+            for (int i = 0; i < threadCount; i++) {
+                PersonEntity person = testPersons.get(i);
+                int finalI = i;
+                futures.add(executor.submit(() -> {
+                    long start = System.nanoTime();
 
-        personRepository.saveAndFlush(main);
-        personRepository.saveAndFlush(partner1);
-        personRepository.saveAndFlush(partner2);
+                    PersonRequest request = new PersonRequest()
+                        .requestId("RQ" + finalI)
+                        .name(person.getName())
+                        .surname(person.getSurname())
+                        .bsn(person.getBsn())
+                        .dateOfBirth(person.getDateOfBirth());
 
-        PersonRequest request = new PersonRequest()
-            .requestId("RQ888")
-            .name("Emma")
-            .surname("Johnson")
-            .bsn("222333444")
-            .dateOfBirth(LocalDate.of(1987, 8, 20));
+                    mockMvc.perform(post("/persons/check-partner-children")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                        .andExpect(content().string("")) // empty body on success
+                        .andExpect(status().isOk());
 
-        mockMvc.perform(post("/persons/check-partner-children")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
-            .andExpect(status().is(444))
-            .andExpect(jsonPath("$.code", is("444")))
-            .andExpect(jsonPath("$.message", is(PersonService.Constants.ErrorMsg.NO_SHARED_CHILDREN)))
-            .andExpect(jsonPath("$.requestId", is("RQ888")));
-    }
+                    return System.nanoTime() - start;
+                }));
+            }
 
+            executor.shutdown();
+            executor.awaitTermination(10, TimeUnit.MINUTES);
 
-    @Test
-    @DisplayName("Should return 444 when none of the children are under 18")
-    void shouldReturn444_WhenChildrenAreAllAdults() throws Exception {
-        PersonEntity main = PersonEntity.builder()
-            .name("Oliver")
-            .surname("Brown")
-            .bsn("333444555")
-            .dateOfBirth(LocalDate.of(1980, 9, 30))
-            .build();
-        PersonEntity partner = PersonEntity.builder()
-            .name("Sophia")
-            .surname("Brown")
-            .bsn("666777888")
-            .dateOfBirth(LocalDate.of(1982, 10, 25))
-            .build();
+            long totalTime = 0;
+            for (Future<Long> future : futures) {
+                totalTime += future.get();
+            }
 
-        main = personRepository.save(main);
-        partner = personRepository.save(partner);
+            double avgNanos = (double) totalTime / threadCount;
+            double avgMillis = avgNanos / 1_000_000.0;
+            double avgSeconds = avgMillis / 1000.0;
 
-        PersonEntity child1 = personRepository.save(createChild("AdultChild1", LocalDate.of(1995, 1, 1)));
-        PersonEntity child2 = personRepository.save(createChild("AdultChild2", LocalDate.of(1994, 2, 2)));
-        PersonEntity child3 = personRepository.save(createChild("AdultChild3", LocalDate.of(1993, 3, 3)));
+            log.info(
+                "\n***************************************************" +
+                    "\n***********************************" +
+                    "\n********************" +
+                    "\nAverage response time: {} ms ({} s), Threads: {}, Total Time (ns): {}\n",
+                String.format("%.3f", avgMillis),
+                String.format("%.3f", avgSeconds),
+                threadCount, totalTime);
 
-        main.addRelationship(partner, RelationshipType.PARTNER, RelationshipType.PARTNER);
-        main.addRelationship(child1, RelationshipType.CHILD, RelationshipType.FATHER);
-        main.addRelationship(child2, RelationshipType.CHILD, RelationshipType.FATHER);
-        main.addRelationship(child3, RelationshipType.CHILD, RelationshipType.FATHER);
+            outputMicro();
 
-        partner.addRelationship(child1, RelationshipType.CHILD, RelationshipType.MOTHER);
-        partner.addRelationship(child2, RelationshipType.CHILD, RelationshipType.MOTHER);
-        partner.addRelationship(child3, RelationshipType.CHILD, RelationshipType.MOTHER);
-
-        personRepository.saveAndFlush(main);
-        personRepository.saveAndFlush(partner);
-
-        PersonRequest request = new PersonRequest()
-            .requestId("RQ777")
-            .name("Oliver")
-            .surname("Brown")
-            .bsn("333444555")
-            .dateOfBirth(LocalDate.of(1980, 9, 30));
-
-        mockMvc.perform(post("/persons/check-partner-children")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
-            .andExpect(status().is(444))
-            .andExpect(jsonPath("$.code", is("444")))
-            .andExpect(jsonPath("$.message", is(PersonService.Constants.ErrorMsg.NO_SHARED_CHILDREN)))
-            .andExpect(jsonPath("$.requestId", is("RQ777")));
-    }
-
-
-    @Test
-    @DisplayName("Should return 200 when no BSN but name, surname, and DOB match")
-    void shouldReturn200_WhenNoBsnButNameSurnameDobMatch() throws Exception {
-        PersonEntity main = PersonEntity.builder()
-            .name("Lucas")
-            .surname("White")
-            .bsn("444555666")
-            .dateOfBirth(LocalDate.of(1992, 11, 11))
-            .build();
-
-        PersonEntity partner = PersonEntity.builder()
-            .name("Mia")
-            .surname("White")
-            .bsn("777888999")
-            .dateOfBirth(LocalDate.of(1990, 12, 12))
-            .build();
-
-        PersonEntity child1 = personRepository.save(createChild("Child1", LocalDate.of(2010, 1, 1)));
-        PersonEntity child2 = personRepository.save(createChild("Child2", LocalDate.of(2012, 2, 2)));
-        PersonEntity child3 = personRepository.save(createChild("Child3", LocalDate.of(2014, 3, 3)));
-
-        main = personRepository.save(main);
-        partner = personRepository.save(partner);
-
-        main.addRelationship(partner, RelationshipType.PARTNER, RelationshipType.PARTNER);
-        main.addRelationship(child1, RelationshipType.CHILD, RelationshipType.FATHER);
-        main.addRelationship(child2, RelationshipType.CHILD, RelationshipType.FATHER);
-        main.addRelationship(child3, RelationshipType.CHILD, RelationshipType.FATHER);
-
-        partner.addRelationship(child1, RelationshipType.CHILD, RelationshipType.MOTHER);
-        partner.addRelationship(child2, RelationshipType.CHILD, RelationshipType.MOTHER);
-        partner.addRelationship(child3, RelationshipType.CHILD, RelationshipType.MOTHER);
-
-        personRepository.saveAndFlush(main);
-        personRepository.saveAndFlush(partner);
-
-        PersonRequest request = new PersonRequest()
-            .requestId("RQ666")
-            .name("Lucas")
-            .surname("White")
-            .dateOfBirth(LocalDate.of(1992, 11, 11));
-
-        mockMvc.perform(post("/persons/check-partner-children")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
-            .andExpect(status().isOk());
+            log.info(
+                "\n********************" +
+                    "\n***********************************" +
+                    "\n***************************************************");
+        }
     }
 
     private PersonEntity createChild(String name, LocalDate dob) {
         return PersonEntity.builder()
             .name(name)
             .surname("Doe")
-            .bsn(UUID.randomUUID().toString().replaceAll("[^0-9]", "").substring(0, 9))
+            .bsn(generate9DigitString())
             .dateOfBirth(dob)
             .build();
+    }
+
+    private String generate9DigitString() {
+        String digits = "";
+        while (digits.length() < 9) {
+            digits += Long.toString(Math.abs(UUID.randomUUID().getMostSignificantBits())).replaceAll("[^0-9]", "");
+        }
+        return digits.substring(0, 9);
     }
 }

@@ -1,4 +1,4 @@
-package com.pink.family.assignment.database.dto;
+package com.pink.family.assignment.dto;
 
 import com.pink.family.assignment.database.entity.enums.RelationshipType;
 import lombok.Builder;
@@ -9,6 +9,7 @@ import lombok.Setter;
 @Setter
 @Builder
 public class PersonRelationshipDto {
-    private Long relatedPersonId;
     private RelationshipType type;
+    private PersonDto person;
+    private PersonDto relatedPerson;
 }

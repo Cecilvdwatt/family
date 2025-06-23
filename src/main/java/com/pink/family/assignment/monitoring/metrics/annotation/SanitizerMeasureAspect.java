@@ -5,9 +5,9 @@
  * in any form without the express written permission of Montant Limited.
  */
 
-package com.flash.sanitization.sanitizer.metrics.annotation;
+package com.pink.family.assignment.monitoring.metrics.annotation;
 
-import com.flash.sanitization.sanitizer.metrics.SanitizerMetricBundle;
+import com.pink.family.assignment.monitoring.metrics.SanitizerMetricBundle;
 import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

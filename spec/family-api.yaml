@@ -21,7 +21,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Person'
+              $ref: '#/components/schemas/PersonRequest'
       responses:
         # Design Note:
         ##############
@@ -41,23 +41,41 @@ paths:
             The response code returned if -
             If the person has no record, no partner, does not have 3 children or none of their children is
             under 18.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 components:
   schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "ERR_NO_MATCH"
+          description: Application-specific error code
+        message:
+          type: string
+          example: "No matching person found or criteria not met"
+          description: Human-readable explanation of the error
+        requestId:
+          type: string
+          example: "RQ0001"
+          description: Optional request ID to trace logs
     # Design note:
     ##############
-    # Keeping the Person record reasonably simple for this assignment.
+    # Keeping the PersonEntity record reasonably simple for this assignment.
     # The more data we do send about this person the better we can do "best match" checking
     # in case some of the details are wrong (for example a typo in the BSN or name).
     # For the same of this assignment I'm keeping it simple and will primarily use the BSN for lookup
     # purposes.
-    Person:
+    PersonRequest:
       type: object
-      required:
-        - bsn
-        - name
-        - surname
-        - dateOfBirth
       properties:
+        requestId:
+          type: string
+          example: RQ0001
+          description: ID of the request used for logging. If not provided one will be generated.
         # Design note:
         ##############
         # Did a bit of googling on this one. Hopefully it's correct.

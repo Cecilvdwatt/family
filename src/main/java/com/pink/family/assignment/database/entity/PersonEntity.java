@@ -28,7 +28,7 @@ import java.util.Set;
 @ToString
 @NoArgsConstructor
 @Builder
-public class Person {
+public class PersonEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -41,9 +41,9 @@ public class Person {
     @OneToMany(mappedBy = "person", cascade = CascadeType.ALL, orphanRemoval = true)
     @ToString.Exclude
     @Builder.Default
-    private Set<PersonRelationship> relationships = new HashSet<>();
+    private Set<PersonRelationshipEntity> relationships = new HashSet<>();
 
-    public Person(Long id, String bsn, String name, String surname, LocalDate dateOfBirth) {
+    public PersonEntity(Long id, String bsn, String name, String surname, LocalDate dateOfBirth) {
         this.id = id;
         this.bsn = bsn;
         this.name = name;
@@ -52,7 +52,7 @@ public class Person {
         this.relationships = new HashSet<>();
     }
 
-    public Person(Long id, String bsn, String name, String surname, LocalDate dateOfBirth, Set<PersonRelationship> relationships) {
+    public PersonEntity(Long id, String bsn, String name, String surname, LocalDate dateOfBirth, Set<PersonRelationshipEntity> relationships) {
         this.id = id;
         this.bsn = bsn;
         this.name = name;
@@ -61,13 +61,13 @@ public class Person {
         this.relationships = relationships != null ? relationships : new HashSet<>();
     }
 
-    public void addRelationship(Person related, RelationshipType type, RelationshipType inverseType) {
+    public void addRelationship(PersonEntity related, RelationshipType type, RelationshipType inverseType) {
         if (this.getId() == null || related.getId() == null) {
             throw new IllegalStateException(
                 "Both persons must have non-null IDs before adding relationship. Ensure entities have been saved first.");
         }
 
-        PersonRelationship rel = new PersonRelationship();
+        PersonRelationshipEntity rel = new PersonRelationshipEntity();
         rel.setPerson(this);
         rel.setRelatedPerson(related);
         rel.setRelationshipType(type);
@@ -75,7 +75,7 @@ public class Person {
         rel.setId(new PersonRelationshipId(this.getId(), related.getId()));
         this.relationships.add(rel);
 
-        PersonRelationship inverse = new PersonRelationship();
+        PersonRelationshipEntity inverse = new PersonRelationshipEntity();
         inverse.setPerson(related);
         inverse.setRelatedPerson(this);
         inverse.setRelationshipType(inverseType);
@@ -101,7 +101,7 @@ public class Person {
         if (thisEffectiveClass != oEffectiveClass) {
             return false;
         }
-        Person person = (Person) o;
+        PersonEntity person = (PersonEntity) o;
         return getId() != null && Objects.equals(getId(), person.getId());
     }
 

@@ -1,4 +1,4 @@
-package com.pink.family.assignment.monitoring.metrics;
+package com.pink.family.assignment;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
