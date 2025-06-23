@@ -2,6 +2,7 @@ package com.pink.family.assignment.api.controller;
 
 import com.pink.family.api.rest.server.model.FullPerson;
 import com.pink.family.api.rest.server.model.PersonDetailsRequest;
+import com.pink.family.api.rest.server.model.Relation;
 import com.pink.family.api.rest.server.model.SpecificPersonCheckRequest;
 import com.pink.family.api.rest.server.reference.V1Api;
 import com.pink.family.assignment.api.exception.PinkApiException;
@@ -14,13 +15,18 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.util.ObjectUtils;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
 /**
  * The controller for the Persons API methods i.e. /persons/**
  */
 @Slf4j
 @RestController
 @RequiredArgsConstructor
-public class PersonsController implements V1Api {
+public class PersonController implements V1Api {
 
     private final PersonService personService;
     private final LoggingService loggingService;
@@ -59,6 +65,25 @@ public class PersonsController implements V1Api {
 
     @Override
     public ResponseEntity<FullPerson> v1PeoplePost(PersonDetailsRequest personDetailsRequest) {
+
+        personService.retrieveAndUpdate(
+            personDetailsRequest.getId(),
+            personDetailsRequest.getName(),
+            personDetailsRequest.getBirthDate(),
+            Stream
+                .of(
+                    personDetailsRequest.getParent1(),
+                    personDetailsRequest.getParent2())
+                .filter(Objects::nonNull)
+                .map(Relation::getId)
+                .collect(Collectors.toSet()),
+            Stream
+                .of(personDetailsRequest.getPartner())
+                .filter(Objects::nonNull)
+                .map(Relation::getId)
+                .collect(Collectors.toSet()),
+            personDetailsRequest.getChildren().stream().map(Relation::getId).collect(Collectors.toSet())
+            );
         return null;
     }
 }

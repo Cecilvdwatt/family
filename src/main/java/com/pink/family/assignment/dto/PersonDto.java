@@ -2,6 +2,7 @@ package com.pink.family.assignment.dto;
 
 import com.pink.family.assignment.database.entity.enums.RelationshipType;
 import com.pink.family.assignment.util.MaskUtil;
+import jakarta.persistence.Column;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
@@ -17,90 +18,74 @@ import java.util.stream.Collectors;
 @Setter
 @Builder
 public class PersonDto {
+
     @Getter
-    private Long id;
+    @Column(name = "id")
+    private Long internalId;
+
     @Getter
-    private String externalId;
+    @Column(unique = true)
+    private Long externalId;
+
     @Getter
     private String name;
+
     @Getter
     private LocalDate dateOfBirth;
+
     private Map<RelationshipType, Set<PersonDto>> relationships;
 
-    public Map<RelationshipType, Set<PersonDto>> getRelationships() {
-        if(relationships == null) {
+    public Map<RelationshipType, Set<PersonDto>> getRelations() {
+        if (relationships == null) {
             relationships = new HashMap<>();
-
-            for (RelationshipType type : RelationshipType.values()) {
-                relationships.put(type, new HashSet<>());
-            }
         }
-
         return relationships;
     }
 
-    public Set<PersonDto> getRelationships(RelationshipType typeToGet) {
-
-        return getRelationships().get(typeToGet);
+    public Set<PersonDto> getRelations(RelationshipType typeToGet) {
+        return getRelations().getOrDefault(typeToGet, Set.of());
     }
 
     public void addRelationship(RelationshipType type, RelationshipType inverse, PersonDto relation) {
-
         addRelationshipNoInverse(type, relation);
         relation.addRelationshipNoInverse(inverse, this);
-
     }
 
     public void addRelationshipNoInverse(RelationshipType type, PersonDto relation) {
-
-        Set<PersonDto> relations = getRelationships(type);
-
-        if(relations == null) {
-            relations = new HashSet<>();
-            getRelationships().put(type, relations);
-        }
-
-        relations.add(relation);
+        getRelations()
+            .computeIfAbsent(type, t -> new HashSet<>())
+            .add(relation);
     }
 
     @Override
     public String toString() {
-        return
-
-            "PersonEntity DTO \n - %s - %s [%s] relationships=%s"
-                .formatted(
-                    id,
-                    name,
-                    MaskUtil.maskExternalId(externalId),
-                    getRelationships()
-                        .entrySet()
-                        .stream()
-                        .map(e ->
-                            e.getValue().isEmpty() ?
-                                "[NOT " + e.getKey() + "]" :
-                                "[%s - %s]".formatted(
-                                    e.getKey(),
-                                    e.getValue().stream()
-                                        .map(r -> r.name)
-                                        .collect(Collectors.joining(", "))
-                                )
-                            )
-                        .collect(Collectors.joining(", ")));
+        return "%s - %s [%s] \nrelationships=%s"
+            .formatted(
+                internalId,
+                name,
+                MaskUtil.maskExternalId(externalId),
+                getRelations()
+                    .entrySet()
+                    .stream()
+                    .map(e ->
+                        "\n[%s of %s]".formatted(
+                            e.getKey(),
+                            e.getValue().stream().map(r -> r.name).collect(Collectors.joining("x, "))
+                        )
+                    )
+                    .collect(Collectors.joining(", "))
+            );
     }
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) {
-            return true;
-        }
-        if (!(o instanceof PersonDto personDto)) {
-            return false;
-        }
-        return Objects.equals(id, personDto.id);
+        if (this == o) return true;
+        if (!(o instanceof PersonDto personDto)) return false;
+        return Objects.equals(internalId, personDto.internalId);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hashCode(id);
+        return Objects.hashCode(internalId);
     }
 }

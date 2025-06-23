@@ -37,23 +37,23 @@ class MaskUtilTest {
 
     private static Stream<Arguments> maskExternalIdTestSource() {
         return Stream.of(
-            Arguments.of("1234567890", "12******90"),
-            Arguments.of("1234567890", "12******90"),
-            Arguments.of("9876543210", "98******10"),
-            Arguments.of("1122334455", "11******55"),
-            Arguments.of("5566778899", "55******99"),
-            Arguments.of("1029384756", "10******56"),
-            Arguments.of("6677889900", "66******00"),
-            Arguments.of("1231231231", "12******31"),
-            Arguments.of("9081726354", "90******54"),
-            Arguments.of("4455667788", "44******88"),
-            Arguments.of("8765432109", "87******09")
+            Arguments.of(1234567890L, "12******90"),
+            Arguments.of(1234567890L, "12******90"),
+            Arguments.of(9876543210L, "98******10"),
+            Arguments.of(1122334455L, "11******55"),
+            Arguments.of(5566778899L, "55******99"),
+            Arguments.of(1029384756L, "10******56"),
+            Arguments.of(6677889900L, "66******00"),
+            Arguments.of(1231231231L, "12******31"),
+            Arguments.of(9081726354L, "90******54"),
+            Arguments.of(4455667788L, "44******88"),
+            Arguments.of(8765432109L, "87******09")
         );
     }
 
     @ParameterizedTest(name = "maskExternalId({0}) = {1}")
     @MethodSource("maskExternalIdTestSource")
-    void test_maskExternalId(String input, String expected) {
+    void test_maskExternalId(Long input, String expected) {
         assertEquals(expected, MaskUtil.maskExternalId(input));
     }
 

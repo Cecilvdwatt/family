@@ -13,29 +13,29 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest
-class PersonMapperTest {
+class PersonDBMapperTests {
     @Test
     @DisplayName("Should successfully map when two partners share a child")
-    void tesToDto_TwoParentsOneChild() {
+    void tesMapDto_TwoParentsOneChild() {
 
         PersonEntity mainPerson = PersonEntity.builder()
-            .id(1L)
+            .internalId(1L)
             .name("Main")
-            .externalId("987654321")
+            .externalId(987654321L)
             .dateOfBirth(LocalDate.of(1980, 1, 1))
             .build();
 
         PersonEntity partnerPerson = PersonEntity.builder()
-            .id(2L)
+            .internalId(2L)
             .name("Partner")
-            .externalId("987654321")
+            .externalId(987654321L)
             .dateOfBirth(LocalDate.of(1982, 1, 1))
             .build();
 
         PersonEntity childPerson = PersonEntity.builder()
-            .id(3L)
+            .internalId(3L)
             .name("Child")
-            .externalId("123456780")
+            .externalId(123456780L)
             .dateOfBirth(LocalDate.of(2000, 5, 15))
             .build();
 
@@ -43,266 +43,262 @@ class PersonMapperTest {
         mainPerson.addRelationship(partnerPerson, RelationshipType.PARTNER, RelationshipType.PARTNER);
 
         // link main and child
-        mainPerson.addRelationship(childPerson, RelationshipType.FATHER, RelationshipType.CHILD);
+        mainPerson.addRelationship(childPerson, RelationshipType.PARENT, RelationshipType.CHILD);
 
         // link partner and child
-        partnerPerson.addRelationship(childPerson, RelationshipType.MOTHER, RelationshipType.CHILD);
+        partnerPerson.addRelationship(childPerson, RelationshipType.PARENT, RelationshipType.CHILD);
 
-        PersonDto dto = PersonMapper.toDto(mainPerson,
-            Set.of(RelationshipType.FATHER, RelationshipType.MOTHER, RelationshipType.PARTNER),
-            null
+        PersonDto dto
+            = PersonDbMapper.mapDto(
+                mainPerson,
+                Set.of(RelationshipType.PARENT, RelationshipType.PARTNER)
         );
 
         assertNotNull(dto);
-        assertEquals(mainPerson.getId(), dto.getId());
+        assertEquals(mainPerson.getInternalId(), dto.getInternalId());
         assertEquals(mainPerson.getName(), dto.getName());
         assertEquals(mainPerson.getExternalId(), dto.getExternalId());
         assertEquals(mainPerson.getDateOfBirth(), dto.getDateOfBirth());
 
-        assertNotNull(dto.getRelationships());
-        assertEquals(1, dto.getRelationships(RelationshipType.FATHER).size());
-        assertEquals(1, dto.getRelationships(RelationshipType.PARTNER).size());
+        assertNotNull(dto.getRelations());
+        assertEquals(1, dto.getRelations(RelationshipType.PARENT).size());
+        assertEquals(1, dto.getRelations(RelationshipType.PARTNER).size());
 
-        var child = dto.getRelationships().get(RelationshipType.FATHER).stream().findFirst().orElseThrow();
+        var child = dto.getRelations(RelationshipType.PARENT).stream().findFirst().orElseThrow();
         // Father/Main should not be added since we're mapping from the perspective of the main
-        assertEquals(2, child.getRelationships(RelationshipType.CHILD).size());
+        assertEquals(2, child.getRelations(RelationshipType.CHILD).size());
 
-        var partner = dto.getRelationships(RelationshipType.PARTNER).stream().findFirst().orElseThrow();
+        var partner = dto.getRelations(RelationshipType.PARTNER).stream().findFirst().orElseThrow();
         // the partner shares a child so a child should be added
-        assertEquals(1, partner.getRelationships(RelationshipType.MOTHER).size());
+        assertEquals(1, partner.getRelations(RelationshipType.PARENT).size());
         // we don't expect the main to the added since we're mapping from the perspective of main
-        assertEquals(1, partner.getRelationships(RelationshipType.PARTNER).size());
+        assertEquals(1, partner.getRelations(RelationshipType.PARTNER).size());
     }
 
     @Test
     @DisplayName("Should successfully map even if there are no partners")
-    void testToDto_SinglePersonNoRelationships() {
+    void testMapDto_SinglePersonNoRelationships() {
         PersonEntity solo = PersonEntity.builder()
-            .id(10L)
+            .internalId(10L)
             .name("Solo")
-            .externalId("111111111")
+            .externalId(111111111L)
             .dateOfBirth(LocalDate.of(1990, 1, 1))
             .build();
 
-        PersonDto dto = PersonMapper.toDto(solo, null, null);
+        PersonDto dto = PersonDbMapper.mapDto(solo);
 
         assertNotNull(dto);
-        assertEquals(solo.getId(), dto.getId());
+        assertEquals(solo.getInternalId(), dto.getInternalId());
         assertEquals(solo.getName(), dto.getName());
         assertEquals(solo.getExternalId(), dto.getExternalId());
         assertEquals(solo.getDateOfBirth(), dto.getDateOfBirth());
 
-        assertNotNull(dto.getRelationships());
+        assertNotNull(dto.getRelations());
         for (RelationshipType type : RelationshipType.values()) {
-            assertTrue(dto.getRelationships(type).isEmpty());
+            assertTrue(dto.getRelations(type).isEmpty());
         }
     }
 
     @Test
     @DisplayName("Should successfully map for multiple children")
-    void testToDto_MultipleChildren() {
+    void testMapDto_MultipleChildren() {
         PersonEntity parent = PersonEntity.builder()
-            .id(20L)
+            .internalId(20L)
             .name("Parent")
-            .externalId("222222222")
+            .externalId(222222222L)
             .dateOfBirth(LocalDate.of(1970, 6, 15))
             .build();
 
         PersonEntity child1 = PersonEntity.builder()
-            .id(21L)
+            .internalId(21L)
             .name("Child1")
-            .externalId("333333333")
+            .externalId(333333333L)
             .dateOfBirth(LocalDate.of(2000, 3, 10))
             .build();
 
         PersonEntity child2 = PersonEntity.builder()
-            .id(22L)
+            .internalId(22L)
             .name("Child2")
-            .externalId("444444444")
+            .externalId(444444444L)
             .dateOfBirth(LocalDate.of(2002, 7, 25))
             .build();
 
         // add a wife just to make sure it filters correctly.
         PersonEntity wife = PersonEntity.builder()
-            .id(23L)
+            .internalId(23L)
             .name("Wife")
-            .externalId("222222222")
+            .externalId(222222222L)
             .dateOfBirth(LocalDate.of(1970, 6, 15))
             .build();
 
-        parent.addRelationship(child1, RelationshipType.FATHER, RelationshipType.CHILD);
-        parent.addRelationship(child2, RelationshipType.FATHER, RelationshipType.CHILD);
+        parent.addRelationship(child1, RelationshipType.PARENT, RelationshipType.CHILD);
+        parent.addRelationship(child2, RelationshipType.PARENT, RelationshipType.CHILD);
         parent.addRelationship(wife, RelationshipType.PARTNER, RelationshipType.PARTNER);
 
-        // Use filter to include RelationshipType.FATHER because that’s the parent's relationship to children
-        PersonDto dto = PersonMapper.toDto(parent, Set.of(RelationshipType.FATHER), null);
+        // Use filter to include RelationshipType.PARENT because that’s the parent's relationship to children
+        PersonDto dto = PersonDbMapper.mapDto(parent, Set.of(RelationshipType.PARENT));
 
         assertNotNull(dto);
-        assertEquals(0, dto.getRelationships(RelationshipType.PARTNER).size());
-        assertEquals(0, dto.getRelationships(RelationshipType.CHILD).size());
-        assertEquals(0, dto.getRelationships(RelationshipType.MOTHER).size());
-
-        assertEquals(2, dto.getRelationships(RelationshipType.FATHER).size());
+        assertEquals(0, dto.getRelations(RelationshipType.PARTNER).size());
+        assertEquals(0, dto.getRelations(RelationshipType.CHILD).size());
+        assertEquals(2, dto.getRelations(RelationshipType.PARENT).size());
         assertTrue(
-            dto.getRelationships(RelationshipType.FATHER)
+            dto.getRelations(RelationshipType.PARENT)
                 .stream()
-                .anyMatch(c -> c.getId().equals(child1.getId())));
+                .anyMatch(c -> c.getInternalId().equals(child1.getInternalId())));
 
         assertEquals(
             dto
-                .getRelationships(RelationshipType.FATHER)
+                .getRelations(RelationshipType.PARENT)
                 .stream()
                 .findFirst()
                 .orElseThrow()
-                .getRelationships(RelationshipType.FATHER)
+                .getRelations(RelationshipType.PARENT)
                 .size(),
             0);
 
         assertEquals(
             dto
-                .getRelationships(RelationshipType.FATHER)
+                .getRelations(RelationshipType.PARENT)
                 .stream()
                 .findFirst()
                 .orElseThrow()
-                .getRelationships(RelationshipType.MOTHER)
+                .getRelations(RelationshipType.PARENT)
                 .size(),
             0);
 
         assertEquals(
             dto
-                .getRelationships(RelationshipType.FATHER)
+                .getRelations(RelationshipType.PARENT)
                 .stream()
                 .findFirst()
                 .orElseThrow()
-                .getRelationships(RelationshipType.PARTNER)
+                .getRelations(RelationshipType.PARTNER)
                 .size(),
             0);
 
-        assertEquals(0, dto.getRelationships(RelationshipType.CHILD).size());
-        assertEquals(0, dto.getRelationships(RelationshipType.MOTHER).size());
+        assertEquals(0, dto.getRelations(RelationshipType.CHILD).size());
+        assertEquals(2, dto.getRelations(RelationshipType.PARENT).size());
 
         assertTrue(
-            dto.getRelationships(
-                RelationshipType.FATHER)
+            dto.getRelations(
+                RelationshipType.PARENT)
                     .stream()
-                    .anyMatch(c -> c.getId().equals(child2.getId())));
+                    .anyMatch(c -> c.getInternalId().equals(child2.getInternalId())));
     }
 
 
     @Test
     @DisplayName("Check that circular relationships are mapped successfully")
-    void testToDto_PartnerCircularRelationship() {
+    void testMapDto_PartnerCircularRelationship() {
         PersonEntity personA = PersonEntity.builder()
-            .id(30L)
+            .internalId(30L)
             .name("Alice")
-            .externalId("555555555")
+            .externalId(555555555L)
             .dateOfBirth(LocalDate.of(1985, 4, 20))
             .build();
 
         PersonEntity personB = PersonEntity.builder()
-            .id(31L)
+            .internalId(31L)
             .name("Bob")
-            .externalId("666666666")
+            .externalId(666666666L)
             .dateOfBirth(LocalDate.of(1983, 12, 11))
             .build();
 
         personA.addRelationship(personB, RelationshipType.PARTNER, RelationshipType.PARTNER);
 
-        PersonDto dto = PersonMapper.toDto(personA, Set.of(RelationshipType.PARTNER), null);
+        PersonDto dto = PersonDbMapper.mapDto(personA, Set.of(RelationshipType.PARTNER));
 
         assertNotNull(dto);
-        assertEquals(1, dto.getRelationships(RelationshipType.PARTNER).size());
-        assertEquals(0, dto.getRelationships(RelationshipType.CHILD).size());
-        assertEquals(0, dto.getRelationships(RelationshipType.FATHER).size());
-        assertEquals(0, dto.getRelationships(RelationshipType.MOTHER).size());
+        assertEquals(1, dto.getRelations(RelationshipType.PARTNER).size());
+        assertEquals(0, dto.getRelations(RelationshipType.CHILD).size());
+        assertEquals(0, dto.getRelations(RelationshipType.PARENT).size());
 
-        PersonDto partner = dto.getRelationships(RelationshipType.PARTNER).iterator().next();
-        assertEquals(0, partner.getRelationships(RelationshipType.CHILD).size());
-        assertEquals(0, partner.getRelationships(RelationshipType.FATHER).size());
-        assertEquals(0, partner.getRelationships(RelationshipType.MOTHER).size());
+        PersonDto partner = dto.getRelations(RelationshipType.PARTNER).iterator().next();
+        assertEquals(0, partner.getRelations(RelationshipType.CHILD).size());
+        assertEquals(0, partner.getRelations(RelationshipType.PARENT).size());
 
         // The partner relationship back to the original person should be present
-        assertEquals(1, partner.getRelationships(RelationshipType.PARTNER).size());
-        assertTrue(partner.getRelationships(RelationshipType.PARTNER).stream()
-            .anyMatch(p -> p.getId().equals(personA.getId())));
+        assertEquals(1, partner.getRelations(RelationshipType.PARTNER).size());
+        assertTrue(partner.getRelations(RelationshipType.PARTNER).stream()
+            .anyMatch(p -> p.getInternalId().equals(personA.getInternalId())));
     }
 
     @Test
     @DisplayName("Should successfully map and return only the partners")
-    void testToDto_FilterOnlyPartners() {
+    void testMapDto_FilterOnlyPartners() {
         PersonEntity person = PersonEntity.builder()
-            .id(40L)
+            .internalId(40L)
             .name("Filter")
-            .externalId("777777777")
+            .externalId(777777777L)
             .dateOfBirth(LocalDate.of(1995, 8, 8))
             .build();
 
         PersonEntity partner = PersonEntity.builder()
-            .id(41L)
+            .internalId(41L)
             .name("Partner")
-            .externalId("888888888")
+            .externalId(888888888L)
             .dateOfBirth(LocalDate.of(1994, 9, 9))
             .build();
 
         PersonEntity child = PersonEntity.builder()
-            .id(42L)
+            .internalId(42L)
             .name("Child")
-            .externalId("999999999")
+            .externalId(999999999L)
             .dateOfBirth(LocalDate.of(2018, 5, 5))
             .build();
 
         person.addRelationship(partner, RelationshipType.PARTNER, RelationshipType.PARTNER);
-        person.addRelationship(child, RelationshipType.FATHER, RelationshipType.CHILD);
+        person.addRelationship(child, RelationshipType.PARENT, RelationshipType.CHILD);
 
-        PersonDto dto = PersonMapper.toDto(person, Set.of(RelationshipType.PARTNER), null);
+        PersonDto dto = PersonDbMapper.mapDto(person, Set.of(RelationshipType.PARTNER));
 
         assertNotNull(dto);
-        assertEquals(1, dto.getRelationships(RelationshipType.PARTNER).size());
-        assertTrue(dto.getRelationships(RelationshipType.PARTNER).stream()
-            .anyMatch(p -> p.getId().equals(partner.getId())));
+        assertEquals(1, dto.getRelations(RelationshipType.PARTNER).size());
+        assertTrue(dto.getRelations(RelationshipType.PARTNER).stream()
+            .anyMatch(p -> p.getInternalId().equals(partner.getInternalId())));
 
         // CHILD relationships should be filtered out
-        assertTrue(dto.getRelationships(RelationshipType.FATHER).isEmpty());
+        assertTrue(dto.getRelations(RelationshipType.PARENT).isEmpty());
     }
 
     @Test
     @DisplayName("Should not include relationships not specified in the filter")
-    void testToDto_IgnoresUnfilteredRelationships() {
+    void testMapDto_IgnoresUnfilteredRelationships() {
         PersonEntity main = PersonEntity.builder()
-            .id(50L)
+            .internalId(50L)
             .name("Main")
-            .externalId("000000001")
+            .externalId(3000000001L)
             .dateOfBirth(LocalDate.of(1990, 1, 1))
             .build();
 
         PersonEntity child = PersonEntity.builder()
-            .id(51L)
+            .internalId(51L)
             .name("Child")
-            .externalId("000000002")
+            .externalId(2000000002L)
             .dateOfBirth(LocalDate.of(2010, 2, 2))
             .build();
 
         PersonEntity partner = PersonEntity.builder()
-            .id(52L)
+            .internalId(52L)
             .name("Partner")
-            .externalId("000000003")
+            .externalId(1000000003L)
             .dateOfBirth(LocalDate.of(1991, 3, 3))
             .build();
 
         // Establish both relationships
-        main.addRelationship(child, RelationshipType.FATHER, RelationshipType.CHILD);
+        main.addRelationship(child, RelationshipType.PARENT, RelationshipType.CHILD);
         main.addRelationship(partner, RelationshipType.PARTNER, RelationshipType.PARTNER);
 
         // Only PARTNER should be included in the result
-        PersonDto dto = PersonMapper.toDto(main, Set.of(RelationshipType.PARTNER), null);
+        PersonDto dto = PersonDbMapper.mapDto(main, Set.of(RelationshipType.PARTNER));
 
         assertNotNull(dto);
-        assertEquals(1, dto.getRelationships(RelationshipType.PARTNER).size());
+        assertEquals(1, dto.getRelations(RelationshipType.PARTNER).size());
 
         // CHILD and FATHER relationships should not be included
-        assertTrue(dto.getRelationships(RelationshipType.FATHER).isEmpty());
-        assertTrue(dto.getRelationships(RelationshipType.CHILD).isEmpty());
-        assertTrue(dto.getRelationships(RelationshipType.MOTHER).isEmpty());
+        assertTrue(dto.getRelations(RelationshipType.PARENT).isEmpty());
+        assertTrue(dto.getRelations(RelationshipType.CHILD).isEmpty());
     }
 
 

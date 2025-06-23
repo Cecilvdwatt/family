@@ -1,5 +1,7 @@
 package com.pink.family.assignment.util;
 
+import org.springframework.util.ObjectUtils;
+
 /**
  * Utility class used to mask values.
  */
@@ -15,8 +17,10 @@ public class MaskUtil {
     /**
      * Mask te External Id value revealing only the first and last two numbers
      */
-    public static String maskExternalId(String input) {
-        return mask(input, 2, 2, 4);
+    public static String maskExternalId(Long input) {
+        return ObjectUtils.isEmpty(input) ?
+            "N/A" :
+            mask(String.valueOf(input), 2, 2, 4);
     }
 
     /**

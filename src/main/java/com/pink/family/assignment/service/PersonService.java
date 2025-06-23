@@ -42,7 +42,7 @@ public class PersonService {
      * An empty string is no issues were encountered.
      * A string containing a description of the failure cause if the check failed.
      */
-    public String hasPartnerAndChildrenExternalId(String externalId) {
+    public String hasPartnerAndChildrenExternalId(Long externalId) {
 
         // Fetch the person by external Id, with only their child and partner relationships
         Optional<PersonDto> optMainPerson = personDao.findPersonFromExternalIdWithPartnerChildren(externalId);
@@ -108,81 +108,62 @@ public class PersonService {
      *
      */
     private String hasPartnerAndChildren(@Nullable PersonDto mainPerson) {
-
-        // If the main person object is null, we can’t proceed
         if (mainPerson == null) {
             return Constants.ErrorMsg.EMPTY_PERSON;
         }
 
-        // Get all partners of the main person
-        // Note: we assume a person may have multiple partners (bigamy allowed)
-        Set<PersonDto> partners = mainPerson.getRelationships().get(RelationshipType.PARTNER);
-
-        // If no partner exists, no match is possible
+        Set<PersonDto> partners = mainPerson.getRelations(RelationshipType.PARTNER);
         if (partners.isEmpty()) {
             return Constants.ErrorMsg.NO_PARTNER;
         }
 
-        // Get all children from the main person’s relationships
-        Set<PersonDto> children = mainPerson.getRelationships().get(RelationshipType.CHILD);
-
-        // The spec requires exactly 3 children — no more, no less
+        Set<PersonDto> children = mainPerson.getRelations(RelationshipType.PARENT);
         if (children.size() != 3) {
-            return Constants.ErrorMsg.NO_CHILDREN;
+            return Constants.ErrorMsg.NUM_CHILDREN;
         }
 
-        // Now we know:
-        // * Main person has at least one partner
-        // * Main person has exactly 3 children
+        boolean matchFound
+            = partners
+                .stream()
+                .anyMatch(
+                    partner -> {
+                        // Count how many children share this partner as a parent via inverse CHILD relationship
+                        long matchingChildren
+                            = children
+                                .stream()
+                                .filter(p -> p.getInternalId().equals(partner.getInternalId()))
+                                .count();
 
-        // We need to confirm:
-        // 1. All 3 children have the *same partner* as the other parent
-        // 2. At least one of those children is under 18
-
-        Set<RelationshipType> parentTypes = RelationshipType.getParentTypes();
-
-        for (PersonDto partner : partners) {
-            int matchingChildCount = 0;
-            boolean hasChildUnder18 = false;
-
-            for (PersonDto child : children) {
-                boolean matchedParent = false;
-
-                // Check if this partner is listed as a parent of the child
-                for (RelationshipType parentType : parentTypes) {
-                    boolean hasParent = child.getRelationships(parentType)
-                        .stream()
-                        .anyMatch(p -> p.getId().equals(partner.getId()));
-
-                    if (hasParent) {
-                        matchedParent = true;
-                        break;
-                    }
-                }
-
-                if (matchedParent) {
-                    matchingChildCount++;
-
-                    // Check if the child is under 18
-                    if (!hasChildUnder18 && child.getDateOfBirth() != null) {
-                        int age = Period.between(child.getDateOfBirth(), LocalDate.now()).getYears();
-                        if (age < 18) {
-                            hasChildUnder18 = true;
+                        if (matchingChildren != 3) {
+                            return false;
                         }
-                    }
-                }
-            }
 
-            // If all 3 children share this partner as a parent AND at least one is under 18, we have a match
-            if (matchingChildCount == 3 && hasChildUnder18) {
-                return Strings.EMPTY;
-            }
-        }
+                    // Check if any child is under 18
+                    return
+                        children
+                            .stream()
+                            .anyMatch(
+                                child ->
+                                    child.getDateOfBirth() != null &&
+                                    Period.between(child.getDateOfBirth(), LocalDate.now()).getYears() < 18);
+                });
 
-        // No partner found that satisfies both conditions
-        return Constants.ErrorMsg.NO_SHARED_CHILDREN;
+        return matchFound ? Strings.EMPTY : Constants.ErrorMsg.NO_SHARED_CHILDREN;
     }
 
+
+
+    public PersonDto retrieveAndUpdate(
+        Long externalId,
+        String name,
+        LocalDate dateOfBirth,
+        Set<Long> parentsId,
+        Set<Long> partnerIds,
+        Set<Long> childrenIds
+    )
+    {
+        return personDao.updatePerson(externalId, name, dateOfBirth, parentsId, partnerIds, childrenIds);
+    }
 
     public static class Constants {
 
@@ -190,7 +171,7 @@ public class PersonService {
 
             public static final String NO_RECORD = "Could not find Person.";
             public static final String NO_SHARED_CHILDREN = "Does not share 3 children with a partner of which at least 1 is under 18";
-            public static final String NO_CHILDREN = "Does not have exactly 3 children";
+            public static final String NUM_CHILDREN = "Does not have exactly 3 children";
             public static final String NO_PARTNER = "Has No Partner";
             public static final String EMPTY_PERSON = "Null PersonEntity Record.";
         }

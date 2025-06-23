@@ -2,7 +2,9 @@ package com.pink.family.assignment.database.entity;
 
 import com.pink.family.assignment.database.entity.enums.RelationshipType;
 import com.pink.family.assignment.database.entity.id.PersonRelationshipId;
+import jakarta.annotation.Nullable;
 import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -32,9 +34,13 @@ public class PersonEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-    private String externalId;
+    @Column(name = "id")
+    private Long internalId;
+    @Nullable
+    private Long externalId;
+    @Nullable
     private String name;
+    @Nullable
     private LocalDate dateOfBirth;
 
     @OneToMany(mappedBy = "person", cascade = CascadeType.ALL, orphanRemoval = true)
@@ -42,16 +48,16 @@ public class PersonEntity {
     @Builder.Default
     private Set<PersonRelationshipEntity> relationships = new HashSet<>();
 
-    public PersonEntity(Long id, String externalId, String name, LocalDate dateOfBirth) {
-        this.id = id;
+    public PersonEntity(Long internalId, Long externalId, String name, LocalDate dateOfBirth) {
+        this.internalId = internalId;
         this.externalId = externalId;
         this.name = name;
         this.dateOfBirth = dateOfBirth;
         this.relationships = new HashSet<>();
     }
 
-    public PersonEntity(Long id, String externalId, String name, LocalDate dateOfBirth, Set<PersonRelationshipEntity> relationships) {
-        this.id = id;
+    public PersonEntity(Long internalId, Long externalId, String name, LocalDate dateOfBirth, Set<PersonRelationshipEntity> relationships) {
+        this.internalId = internalId;
         this.externalId = externalId;
         this.name = name;
         this.dateOfBirth = dateOfBirth;
@@ -59,7 +65,7 @@ public class PersonEntity {
     }
 
     public void addRelationship(PersonEntity related, RelationshipType type, RelationshipType inverseType) {
-        if (this.getId() == null || related.getId() == null) {
+        if (this.getInternalId() == null || related.getInternalId() == null) {
             throw new IllegalStateException(
                 "Both persons must have non-null IDs before adding relationship. Ensure entities have been saved first.");
         }
@@ -69,7 +75,7 @@ public class PersonEntity {
         rel.setRelatedPerson(related);
         rel.setRelationshipType(type);
         rel.setInversRelationshipType(inverseType);
-        rel.setId(new PersonRelationshipId(this.getId(), related.getId()));
+        rel.setId(new PersonRelationshipId(this.getInternalId(), related.getInternalId()));
         this.relationships.add(rel);
 
         PersonRelationshipEntity inverse = new PersonRelationshipEntity();
@@ -77,7 +83,7 @@ public class PersonEntity {
         inverse.setRelatedPerson(this);
         inverse.setRelationshipType(inverseType);
         inverse.setInversRelationshipType(type);
-        inverse.setId(new PersonRelationshipId(related.getId(), this.getId()));
+        inverse.setId(new PersonRelationshipId(related.getInternalId(), this.getInternalId()));
         related.relationships.add(inverse);
     }
 
@@ -99,7 +105,7 @@ public class PersonEntity {
             return false;
         }
         PersonEntity person = (PersonEntity) o;
-        return getId() != null && Objects.equals(getId(), person.getId());
+        return getInternalId() != null && Objects.equals(getInternalId(), person.getInternalId());
     }
 
     @Override

@@ -66,27 +66,23 @@ public class PersonRelationshipEntity {
 
     @Override
     public final boolean equals(Object o) {
-        if (this == o) {
-            return true;
-        }
-        if (o == null) {
-            return false;
-        }
+        if (this == o) return true;
+        if (o == null) return false;
         Class<?> oEffectiveClass = o instanceof HibernateProxy ?
             ((HibernateProxy) o).getHibernateLazyInitializer().getPersistentClass() :
             o.getClass();
         Class<?> thisEffectiveClass = this instanceof HibernateProxy ?
             ((HibernateProxy) this).getHibernateLazyInitializer().getPersistentClass() :
             this.getClass();
-        if (thisEffectiveClass != oEffectiveClass) {
-            return false;
-        }
+        if (thisEffectiveClass != oEffectiveClass) return false;
         PersonRelationshipEntity that = (PersonRelationshipEntity) o;
-        return getId() != null && Objects.equals(getId(), that.getId());
+        return id != null
+            && Objects.equals(id, that.id)
+            && relationshipType == that.relationshipType;
     }
 
     @Override
     public final int hashCode() {
-        return Objects.hash(id);
+        return Objects.hash(id, relationshipType);
     }
 }

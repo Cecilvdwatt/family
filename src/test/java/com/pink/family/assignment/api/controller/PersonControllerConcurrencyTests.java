@@ -30,7 +30,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
+import java.util.Random;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -47,7 +47,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
     "logging.level.com.pink.family=INFO"
 })
 @AutoConfigureMockMvc
-class PersonsControllerConcurrency {
+class PersonControllerConcurrencyTests {
 
     @Autowired
     private MeterRegistry meterRegistry;
@@ -90,13 +90,13 @@ class PersonsControllerConcurrency {
 
             PersonEntity main = PersonEntity.builder()
                 .name("Jane")
-                .externalId("123456789")
+                .externalId(123456789L)
                 .dateOfBirth(LocalDate.of(1990, 5, 20))
                 .build();
 
             PersonEntity partner = PersonEntity.builder()
                 .name("John")
-                .externalId("987654321")
+                .externalId(987654321L)
                 .dateOfBirth(LocalDate.of(1988, 3, 15))
                 .build();
 
@@ -111,13 +111,13 @@ class PersonsControllerConcurrency {
             child3 = personRepository.save(child3);
 
             main.addRelationship(partner, RelationshipType.PARTNER, RelationshipType.PARTNER);
-            main.addRelationship(child1, RelationshipType.CHILD, RelationshipType.FATHER);
-            main.addRelationship(child2, RelationshipType.CHILD, RelationshipType.FATHER);
-            main.addRelationship(child3, RelationshipType.CHILD, RelationshipType.FATHER);
+            main.addRelationship(child1, RelationshipType.CHILD, RelationshipType.PARENT);
+            main.addRelationship(child2, RelationshipType.CHILD, RelationshipType.PARENT);
+            main.addRelationship(child3, RelationshipType.CHILD, RelationshipType.PARENT);
 
-            partner.addRelationship(child1, RelationshipType.CHILD, RelationshipType.MOTHER);
-            partner.addRelationship(child2, RelationshipType.CHILD, RelationshipType.MOTHER);
-            partner.addRelationship(child3, RelationshipType.CHILD, RelationshipType.MOTHER);
+            partner.addRelationship(child1, RelationshipType.CHILD, RelationshipType.PARENT);
+            partner.addRelationship(child2, RelationshipType.CHILD, RelationshipType.PARENT);
+            partner.addRelationship(child3, RelationshipType.CHILD, RelationshipType.PARENT);
 
             personRepository.saveAndFlush(main);
             personRepository.saveAndFlush(partner);
@@ -142,7 +142,7 @@ class PersonsControllerConcurrency {
                     SpecificPersonCheckRequest request = new SpecificPersonCheckRequest()
                         .requestId("RQ" + finalI)
                         .name("Jane")
-                        .id("123456789")
+                        .id(123456789L)
                         .dateOfBirth(LocalDate.of(1990, 5, 20));
 
                     mockMvc.perform(post("/v1/people/check-existing-person")
@@ -251,7 +251,7 @@ class PersonsControllerConcurrency {
             for (int i = 0; i < maxPersons; i++) {
                 PersonEntity p = PersonEntity.builder()
                     .name("Person" + i)
-                    .externalId(String.format("%09d", 100000000 + i))
+                    .externalId(new Random().nextLong())
                     .dateOfBirth(LocalDate.of(1990, 1, 1).plusDays(i))
                     .build();
                 created.add(personRepository.save(p));
@@ -271,16 +271,16 @@ class PersonsControllerConcurrency {
                     LocalDate dob = (c == 3) ? LocalDate.now().minusYears(10) : LocalDate.now().minusYears(20 + c);
                     PersonEntity child = PersonEntity.builder()
                         .name(p1.getName() + "Child" + c)
-                        .externalId(generate9DigitString())
+                        .externalId(new Random().nextLong())
                         .dateOfBirth(dob)
                         .build();
                     child = personRepository.save(child);
 
-                    p1.addRelationship(child, RelationshipType.CHILD, RelationshipType.FATHER);
-                    p2.addRelationship(child, RelationshipType.CHILD, RelationshipType.MOTHER);
+                    p1.addRelationship(child, RelationshipType.CHILD, RelationshipType.PARENT);
+                    p2.addRelationship(child, RelationshipType.CHILD, RelationshipType.PARENT);
 
-                    child.addRelationship(p1, RelationshipType.FATHER, RelationshipType.CHILD);
-                    child.addRelationship(p2, RelationshipType.MOTHER, RelationshipType.CHILD);
+                    child.addRelationship(p1, RelationshipType.PARENT, RelationshipType.CHILD);
+                    child.addRelationship(p2, RelationshipType.PARENT, RelationshipType.CHILD);
 
                     personRepository.save(child);
                 }
@@ -357,16 +357,8 @@ class PersonsControllerConcurrency {
     private PersonEntity createChild(String name, LocalDate dob) {
         return PersonEntity.builder()
             .name(name)
-            .externalId(generate9DigitString())
+            .externalId(new Random().nextLong())
             .dateOfBirth(dob)
             .build();
-    }
-
-    private String generate9DigitString() {
-        StringBuilder digits = new StringBuilder();
-        while (digits.length() < 9) {
-            digits.append(Long.toString(Math.abs(UUID.randomUUID().getMostSignificantBits())).replaceAll("[^0-9]", ""));
-        }
-        return digits.substring(0, 9);
     }
 }

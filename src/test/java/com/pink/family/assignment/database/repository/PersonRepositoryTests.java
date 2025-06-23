@@ -11,13 +11,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 
 import java.time.LocalDate;
-import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 @DataJpaTest
-public class PersonRepositoryTest {
+public class PersonRepositoryTests {
 
     @Autowired
     private PersonRepository personRepository;
@@ -29,13 +29,13 @@ public class PersonRepositoryTest {
     void testCreateAndReadPerson() {
         PersonEntity person = PersonEntity.builder()
             .name("John")
-            .externalId("123456789")
+            .externalId(123456789L)
             .dateOfBirth(LocalDate.of(1990, 1, 1))
             .build();
 
         PersonEntity saved = personRepository.save(person);
 
-        Optional<PersonEntity> found = personRepository.findById(saved.getId());
+        Optional<PersonEntity> found = personRepository.findById(saved.getInternalId());
         assertThat(found).isPresent();
         assertThat(found.get().getName()).isEqualTo("John");
     }
@@ -44,7 +44,7 @@ public class PersonRepositoryTest {
     void testUpdatePerson() {
         PersonEntity person = PersonEntity.builder()
             .name("Jane")
-            .externalId("987654321")
+            .externalId(987654321L)
             .dateOfBirth(LocalDate.of(1985, 5, 15))
             .build();
 
@@ -53,7 +53,7 @@ public class PersonRepositoryTest {
         saved.setName("Janet");
         PersonEntity updated = personRepository.save(saved);
 
-        Optional<PersonEntity> found = personRepository.findById(updated.getId());
+        Optional<PersonEntity> found = personRepository.findById(updated.getInternalId());
         assertThat(found).isPresent();
         assertThat(found.get().getName()).isEqualTo("Janet");
     }
@@ -63,12 +63,12 @@ public class PersonRepositoryTest {
     void testDeletePerson() {
         PersonEntity person = PersonEntity.builder()
             .name("Mark")
-            .externalId("111222333")
+            .externalId(111222333L)
             .dateOfBirth(LocalDate.of(1970, 12, 25))
             .build();
 
         PersonEntity saved = personRepository.save(person);
-        Long id = saved.getId();
+        Long id = saved.getInternalId();
 
         personRepository.delete(saved);
         Optional<PersonEntity> found = personRepository.findById(id);
@@ -80,13 +80,13 @@ public class PersonRepositoryTest {
     void testDeletePersonWithRelationship() {
         PersonEntity p1 = PersonEntity.builder()
             .name("Alice")
-            .externalId("555555555")
+            .externalId(555555555L)
             .dateOfBirth(LocalDate.of(1995, 6, 10))
             .build();
 
         PersonEntity p2 = PersonEntity.builder()
             .name("Bob")
-            .externalId("666666666")
+            .externalId(666666666L)
             .dateOfBirth(LocalDate.of(1993, 8, 20))
             .build();
 
@@ -100,16 +100,16 @@ public class PersonRepositoryTest {
         // Manually remove inverse relationship from p2 because hibernate doesn't do so automatically
         // even if you have the right annotations.
         PersonEntity finalP = p1;
-        p2.getRelationships().removeIf(r -> r.getRelatedPerson().getId().equals(finalP.getId()));
+        p2.getRelationships().removeIf(r -> r.getRelatedPerson().getInternalId().equals(finalP.getInternalId()));
         personRepository.save(p2); // Persist the cleaned-up p2
 
-        Long id = p1.getId();
+        Long id = p1.getInternalId();
         personRepository.delete(p1);
 
         assertThat(personRepository.findById(id)).isNotPresent();
 
         // Verify p2 still exists and has no relationships
-        Optional<PersonEntity> found = personRepository.findById(p2.getId());
+        Optional<PersonEntity> found = personRepository.findById(p2.getInternalId());
         assertThat(found).isPresent();
         assertThat(found.get().getRelationships()).isEmpty();
     }
@@ -120,13 +120,13 @@ public class PersonRepositoryTest {
     void testAddRelationship() {
         PersonEntity p1 = PersonEntity.builder()
             .name("Alice")
-            .externalId("555555555")
+            .externalId(555555555L)
             .dateOfBirth(LocalDate.of(1995, 6, 10))
             .build();
 
         PersonEntity p2 = PersonEntity.builder()
             .name("Bob")
-            .externalId("666666666")
+            .externalId(666666666L)
             .dateOfBirth(LocalDate.of(1993, 8, 20))
             .build();
 
@@ -138,13 +138,13 @@ public class PersonRepositoryTest {
         personRepository.save(p1);
         p2 = personRepository.save(p2);
 
-        PersonRelationshipId relId = new PersonRelationshipId(p1.getId(), p2.getId());
+        PersonRelationshipId relId = new PersonRelationshipId(p1.getInternalId(), p2.getInternalId());
         Optional<PersonRelationshipEntity> relOpt = relationshipRepository.findById(relId);
 
         assertThat(relOpt).isPresent();
         PersonRelationshipEntity rel = relOpt.get();
-        assertThat(rel.getPerson().getId()).isEqualTo(p1.getId());
-        assertThat(rel.getRelatedPerson().getId()).isEqualTo(p2.getId());
+        assertThat(rel.getPerson().getInternalId()).isEqualTo(p1.getInternalId());
+        assertThat(rel.getRelatedPerson().getInternalId()).isEqualTo(p2.getInternalId());
         assertThat(rel.getRelationshipType()).isEqualTo(RelationshipType.PARTNER);
     }
 
@@ -153,23 +153,23 @@ public class PersonRepositoryTest {
     void testDeleteRelationship() {
         PersonEntity p1 = PersonEntity.builder()
             .name("Charlie")
-            .externalId("777777777")
+            .externalId(777777777L)
             .dateOfBirth(LocalDate.of(1980, 3, 3))
             .build();
 
         PersonEntity p2 = PersonEntity.builder()
             .name("Diana")
-            .externalId("888888888")
+            .externalId(888888888L)
             .dateOfBirth(LocalDate.of(1982, 7, 7))
             .build();
 
         p1 = personRepository.save(p1);
         p2 = personRepository.save(p2);
 
-        p1.addRelationship(p2, RelationshipType.MOTHER, RelationshipType.CHILD);
+        p1.addRelationship(p2, RelationshipType.PARENT, RelationshipType.CHILD);
         personRepository.save(p1);
 
-        PersonRelationshipId relId = new PersonRelationshipId(p1.getId(), p2.getId());
+        PersonRelationshipId relId = new PersonRelationshipId(p1.getInternalId(), p2.getInternalId());
 
         // Remove the relationship
         relationshipRepository.deleteById(relId);
@@ -183,15 +183,15 @@ public class PersonRepositoryTest {
         // given
         PersonEntity person = PersonEntity.builder()
             .name("John")
-            .externalId("111222333")
+            .externalId(111222333L)
             .dateOfBirth(LocalDate.of(1990, 1, 1))
             .build();
         personRepository.save(person);
 
-        List<PersonEntity> result = personRepository.findAllByNameAndDateOfBirth("John", LocalDate.of(1990, 1, 1));
+        Set<PersonEntity> result = personRepository.findAllByNameAndDateOfBirth("John", LocalDate.of(1990, 1, 1));
 
         assertThat(result).hasSize(1);
-        assertThat(result.getFirst().getExternalId()).isEqualTo("111222333");
+        assertThat(result.stream().findFirst().orElseThrow().getExternalId()).isEqualTo(111222333L);
     }
 
     @Test
@@ -200,12 +200,12 @@ public class PersonRepositoryTest {
         // given
         PersonEntity person = PersonEntity.builder()
             .name("Alice")
-            .externalId("555555555")
+            .externalId(555555555L)
             .dateOfBirth(LocalDate.of(1985, 5, 5))
             .build();
         personRepository.save(person);
 
-        List<PersonEntity> result =
+        Set<PersonEntity> result =
             personRepository.findAllByNameAndDateOfBirth(
                 "Wrong",
                 LocalDate.of(1985, 5, 5));
@@ -219,17 +219,17 @@ public class PersonRepositoryTest {
         // given
         personRepository.save(PersonEntity.builder()
             .name("Emma")
-            .externalId("888111999")
+            .externalId(888111999L)
             .dateOfBirth(LocalDate.of(2000, 3, 10))
             .build());
 
         personRepository.save(PersonEntity.builder()
             .name("Emma")
-            .externalId("888111998")
+            .externalId(888111998L)
             .dateOfBirth(LocalDate.of(2000, 3, 10))
             .build());
 
-        List<PersonEntity> result =
+        Set<PersonEntity> result =
             personRepository.findAllByNameAndDateOfBirth(
                 "Emma",
                 LocalDate.of(2000, 3, 10));
@@ -237,6 +237,6 @@ public class PersonRepositoryTest {
         // then
         assertThat(result).hasSize(2);
         assertThat(result).extracting(PersonEntity::getExternalId)
-            .containsExactlyInAnyOrder("888111999", "888111998");
+            .containsExactlyInAnyOrder(888111999L, 888111998L);
     }
 }

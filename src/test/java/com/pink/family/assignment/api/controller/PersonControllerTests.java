@@ -20,7 +20,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.hamcrest.Matchers.is;
 
 import java.time.LocalDate;
-import java.util.UUID;
+import java.util.Random;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -29,7 +29,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @Transactional // reset the h2 data
-class PersonsControllerIT {
+class PersonControllerTests {
 
     @Autowired
     private MockMvc mockMvc;
@@ -50,13 +50,13 @@ class PersonsControllerIT {
     void shouldReturn200_WhenPartnerAnd3ChildrenExist() throws Exception {
         PersonEntity main = PersonEntity.builder()
             .name("John")
-            .externalId("123456789")
+            .externalId(123456789L)
             .dateOfBirth(LocalDate.of(1990, 5, 20))
             .build();
 
         PersonEntity partner = PersonEntity.builder()
             .name("Jane")
-            .externalId("987654321")
+            .externalId(987654321L)
             .dateOfBirth(LocalDate.of(1988, 3, 15))
             .build();
 
@@ -74,13 +74,13 @@ class PersonsControllerIT {
 
         // Add relationships after IDs are assigned
         main.addRelationship(partner, RelationshipType.PARTNER, RelationshipType.PARTNER);
-        main.addRelationship(child1, RelationshipType.CHILD, RelationshipType.FATHER);
-        main.addRelationship(child2, RelationshipType.CHILD, RelationshipType.FATHER);
-        main.addRelationship(child3, RelationshipType.CHILD, RelationshipType.FATHER);
+        main.addRelationship(child1, RelationshipType.PARENT, RelationshipType.CHILD);
+        main.addRelationship(child2, RelationshipType.PARENT, RelationshipType.CHILD);
+        main.addRelationship(child3, RelationshipType.PARENT, RelationshipType.CHILD);
 
-        partner.addRelationship(child1, RelationshipType.CHILD, RelationshipType.MOTHER);
-        partner.addRelationship(child2, RelationshipType.CHILD, RelationshipType.MOTHER);
-        partner.addRelationship(child3, RelationshipType.CHILD, RelationshipType.MOTHER);
+        partner.addRelationship(child1, RelationshipType.PARENT, RelationshipType.CHILD);
+        partner.addRelationship(child2, RelationshipType.PARENT, RelationshipType.CHILD);
+        partner.addRelationship(child3, RelationshipType.PARENT, RelationshipType.CHILD);
 
         // Save all entities again to persist the relationships
         personRepository.saveAndFlush(main);
@@ -93,7 +93,7 @@ class PersonsControllerIT {
         SpecificPersonCheckRequest request = new SpecificPersonCheckRequest()
             .requestId("RQ123")
             .name("Jane")
-            .id("123456789")
+            .id(123456789L)
             .dateOfBirth(LocalDate.of(1990, 5, 20));
 
         // Perform POST request and expect 200 OK
@@ -108,14 +108,14 @@ class PersonsControllerIT {
     @DisplayName("Should return 444 when no partner or children exist")
     void shouldReturn444_WhenNoPartnerOrChildren() throws Exception {
         personRepository.save(PersonEntity.builder()
-            .externalId("000000000")
+            .externalId(1000000000L)
             .name("Lonely")
             .dateOfBirth(LocalDate.of(1990, 1, 1))
             .build());
 
         SpecificPersonCheckRequest apiRequest = new SpecificPersonCheckRequest()
             .requestId("REQ444")
-            .id("000000000")
+            .id(1000000000L)
             .name("Lonely")
             .dateOfBirth(LocalDate.of(1990, 1, 1));
 
@@ -133,12 +133,12 @@ class PersonsControllerIT {
     void shouldReturn444_WhenMoreThan3ChildrenExist() throws Exception {
         PersonEntity main = PersonEntity.builder()
             .name("Anna")
-            .externalId("111222333")
+            .externalId(111222333L)
             .dateOfBirth(LocalDate.of(1985, 7, 15))
             .build();
         PersonEntity partner = PersonEntity.builder()
             .name("Mark")
-            .externalId("444555666")
+            .externalId(444555666L)
             .dateOfBirth(LocalDate.of(1984, 6, 10))
             .build();
         main = personRepository.save(main);
@@ -150,15 +150,15 @@ class PersonsControllerIT {
         PersonEntity child4 = personRepository.save(createChild("Child4", LocalDate.of(2011, 4, 4)));
 
         main.addRelationship(partner, RelationshipType.PARTNER, RelationshipType.PARTNER);
-        main.addRelationship(child1, RelationshipType.CHILD, RelationshipType.FATHER);
-        main.addRelationship(child2, RelationshipType.CHILD, RelationshipType.FATHER);
-        main.addRelationship(child3, RelationshipType.CHILD, RelationshipType.FATHER);
-        main.addRelationship(child4, RelationshipType.CHILD, RelationshipType.FATHER);
+        main.addRelationship(child1, RelationshipType.PARENT, RelationshipType.CHILD);
+        main.addRelationship(child2, RelationshipType.PARENT, RelationshipType.CHILD);
+        main.addRelationship(child3, RelationshipType.PARENT, RelationshipType.CHILD);
+        main.addRelationship(child4, RelationshipType.PARENT, RelationshipType.CHILD);
 
-        partner.addRelationship(child1, RelationshipType.CHILD, RelationshipType.MOTHER);
-        partner.addRelationship(child2,RelationshipType.CHILD, RelationshipType.MOTHER);
-        partner.addRelationship(child3, RelationshipType.CHILD, RelationshipType.MOTHER);
-        partner.addRelationship(child4, RelationshipType.CHILD, RelationshipType.MOTHER);
+        partner.addRelationship(child1, RelationshipType.PARENT, RelationshipType.CHILD);
+        partner.addRelationship(child2,RelationshipType.PARENT, RelationshipType.CHILD);
+        partner.addRelationship(child3, RelationshipType.PARENT, RelationshipType.CHILD);
+        partner.addRelationship(child4, RelationshipType.PARENT, RelationshipType.CHILD);
 
         personRepository.saveAndFlush(main);
         personRepository.saveAndFlush(partner);
@@ -166,7 +166,7 @@ class PersonsControllerIT {
         SpecificPersonCheckRequest request = new SpecificPersonCheckRequest()
             .requestId("RQ999")
             .name("Anna")
-            .id("111222333")
+            .id(111222333L)
             .dateOfBirth(LocalDate.of(1985, 7, 15));
 
         mockMvc.perform(post("/v1/people/check-existing-person")
@@ -174,7 +174,7 @@ class PersonsControllerIT {
                 .content(objectMapper.writeValueAsString(request)))
             .andExpect(status().is(444))
             .andExpect(jsonPath("$.code", is("444")))
-            .andExpect(jsonPath("$.message", is(PersonService.Constants.ErrorMsg.NO_CHILDREN)))
+            .andExpect(jsonPath("$.message", is(PersonService.Constants.ErrorMsg.NUM_CHILDREN)))
             .andExpect(jsonPath("$.requestId", is("RQ999")));
     }
 
@@ -183,17 +183,17 @@ class PersonsControllerIT {
     void shouldReturn444_WhenChildrenHaveDifferentPartners() throws Exception {
         PersonEntity main = PersonEntity.builder()
             .name("Emma")
-            .externalId("222333444")
+            .externalId(222333444L)
             .dateOfBirth(LocalDate.of(1987, 8, 20))
             .build();
         PersonEntity partner1 = PersonEntity.builder()
             .name("Liam")
-            .externalId("555666777")
+            .externalId(555666777L)
             .dateOfBirth(LocalDate.of(1986, 7, 10))
             .build();
         PersonEntity partner2 = PersonEntity.builder()
             .name("Noah")
-            .externalId("888999000")
+            .externalId(888999000L)
             .dateOfBirth(LocalDate.of(1985, 5, 5))
             .build();
 
@@ -206,14 +206,14 @@ class PersonsControllerIT {
         PersonEntity child3 = personRepository.save(createChild("Child3", LocalDate.of(2012, 5, 5)));
 
         main.addRelationship(partner1, RelationshipType.PARTNER, RelationshipType.PARTNER);
-        main.addRelationship(child1, RelationshipType.CHILD, RelationshipType.FATHER);
-        main.addRelationship(child2, RelationshipType.CHILD, RelationshipType.FATHER);
-        main.addRelationship(child3, RelationshipType.CHILD, RelationshipType.FATHER);
+        main.addRelationship(child1, RelationshipType.PARENT, RelationshipType.CHILD);
+        main.addRelationship(child2, RelationshipType.PARENT, RelationshipType.CHILD);
+        main.addRelationship(child3, RelationshipType.PARENT, RelationshipType.CHILD);
 
         // Different partners for children
-        partner1.addRelationship(child1, RelationshipType.CHILD, RelationshipType.MOTHER);
-        partner2.addRelationship(child2, RelationshipType.CHILD, RelationshipType.MOTHER);
-        partner1.addRelationship(child3, RelationshipType.CHILD, RelationshipType.MOTHER);
+        partner1.addRelationship(child1, RelationshipType.PARENT, RelationshipType.CHILD);
+        partner2.addRelationship(child2, RelationshipType.PARENT, RelationshipType.CHILD);
+        partner1.addRelationship(child3, RelationshipType.PARENT, RelationshipType.CHILD);
 
         personRepository.saveAndFlush(main);
         personRepository.saveAndFlush(partner1);
@@ -222,7 +222,7 @@ class PersonsControllerIT {
         SpecificPersonCheckRequest request = new SpecificPersonCheckRequest()
             .requestId("RQ888")
             .name("Emma")
-            .id("222333444")
+            .id(222333444L)
             .dateOfBirth(LocalDate.of(1987, 8, 20));
 
         mockMvc.perform(post("/v1/people/check-existing-person")
@@ -240,12 +240,12 @@ class PersonsControllerIT {
     void shouldReturn444_WhenChildrenAreAllAdults() throws Exception {
         PersonEntity main = PersonEntity.builder()
             .name("Oliver")
-            .externalId("333444555")
+            .externalId(333444555L)
             .dateOfBirth(LocalDate.of(1980, 9, 30))
             .build();
         PersonEntity partner = PersonEntity.builder()
             .name("Sophia")
-            .externalId("666777888")
+            .externalId(666777888L)
             .dateOfBirth(LocalDate.of(1982, 10, 25))
             .build();
 
@@ -257,13 +257,13 @@ class PersonsControllerIT {
         PersonEntity child3 = personRepository.save(createChild("AdultChild3", LocalDate.of(1993, 3, 3)));
 
         main.addRelationship(partner, RelationshipType.PARTNER, RelationshipType.PARTNER);
-        main.addRelationship(child1, RelationshipType.CHILD, RelationshipType.FATHER);
-        main.addRelationship(child2, RelationshipType.CHILD, RelationshipType.FATHER);
-        main.addRelationship(child3, RelationshipType.CHILD, RelationshipType.FATHER);
+        main.addRelationship(child1, RelationshipType.PARENT, RelationshipType.CHILD);
+        main.addRelationship(child2, RelationshipType.PARENT, RelationshipType.CHILD);
+        main.addRelationship(child3, RelationshipType.PARENT, RelationshipType.CHILD);
 
-        partner.addRelationship(child1, RelationshipType.CHILD, RelationshipType.MOTHER);
-        partner.addRelationship(child2, RelationshipType.CHILD, RelationshipType.MOTHER);
-        partner.addRelationship(child3, RelationshipType.CHILD, RelationshipType.MOTHER);
+        partner.addRelationship(child1, RelationshipType.PARENT, RelationshipType.CHILD);
+        partner.addRelationship(child2, RelationshipType.PARENT, RelationshipType.CHILD);
+        partner.addRelationship(child3, RelationshipType.PARENT, RelationshipType.CHILD);
 
         personRepository.saveAndFlush(main);
         personRepository.saveAndFlush(partner);
@@ -271,7 +271,7 @@ class PersonsControllerIT {
         SpecificPersonCheckRequest request = new SpecificPersonCheckRequest()
             .requestId("RQ777")
             .name("Oliver")
-            .id("333444555")
+            .id(333444555L)
             .dateOfBirth(LocalDate.of(1980, 9, 30));
 
         mockMvc.perform(post("/v1/people/check-existing-person")
@@ -289,13 +289,13 @@ class PersonsControllerIT {
     void shouldReturn200_WhenNoExternalIdButNameSurnameDobMatch() throws Exception {
         PersonEntity main = PersonEntity.builder()
             .name("Lucas")
-            .externalId("444555666")
+            .externalId(444555666L)
             .dateOfBirth(LocalDate.of(1992, 11, 11))
             .build();
 
         PersonEntity partner = PersonEntity.builder()
             .name("Mia")
-            .externalId("777888999")
+            .externalId(777888999L)
             .dateOfBirth(LocalDate.of(1990, 12, 12))
             .build();
 
@@ -307,13 +307,13 @@ class PersonsControllerIT {
         partner = personRepository.save(partner);
 
         main.addRelationship(partner, RelationshipType.PARTNER, RelationshipType.PARTNER);
-        main.addRelationship(child1, RelationshipType.CHILD, RelationshipType.FATHER);
-        main.addRelationship(child2, RelationshipType.CHILD, RelationshipType.FATHER);
-        main.addRelationship(child3, RelationshipType.CHILD, RelationshipType.FATHER);
+        main.addRelationship(child1, RelationshipType.PARENT, RelationshipType.CHILD);
+        main.addRelationship(child2, RelationshipType.PARENT, RelationshipType.CHILD);
+        main.addRelationship(child3, RelationshipType.PARENT, RelationshipType.CHILD);
 
-        partner.addRelationship(child1, RelationshipType.CHILD, RelationshipType.MOTHER);
-        partner.addRelationship(child2, RelationshipType.CHILD, RelationshipType.MOTHER);
-        partner.addRelationship(child3, RelationshipType.CHILD, RelationshipType.MOTHER);
+        partner.addRelationship(child1, RelationshipType.PARENT, RelationshipType.CHILD);
+        partner.addRelationship(child2, RelationshipType.PARENT, RelationshipType.CHILD);
+        partner.addRelationship(child3, RelationshipType.PARENT, RelationshipType.CHILD);
 
         personRepository.saveAndFlush(main);
         personRepository.saveAndFlush(partner);
@@ -332,7 +332,7 @@ class PersonsControllerIT {
     private PersonEntity createChild(String name, LocalDate dob) {
         return PersonEntity.builder()
             .name(name)
-            .externalId(UUID.randomUUID().toString().replaceAll("[^0-9]", "").substring(0, 9))
+            .externalId(new Random().nextLong())
             .dateOfBirth(dob)
             .build();
     }
