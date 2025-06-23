@@ -13,7 +13,7 @@ import org.springframework.cache.caffeine.CaffeineCacheManager;
 import java.time.Duration;
 
 /**
- * Caching config
+ * Caching config. Set up cache managers using configurable values.
  */
 @Configuration
 @EnableCaching

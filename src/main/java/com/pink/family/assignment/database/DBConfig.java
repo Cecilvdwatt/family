@@ -7,6 +7,9 @@ import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 
+/**
+ * Configuration used to setup JPA and Hibernate.
+ */
 @SpringBootApplication
 @EnableTransactionManagement
 @EnableJpaRepositories(basePackageClasses = PersonRepository.class)
