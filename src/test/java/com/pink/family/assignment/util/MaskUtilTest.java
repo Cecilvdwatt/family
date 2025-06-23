@@ -35,7 +35,7 @@ class MaskUtilTest {
         assertEquals(MaskUtil.mask(input, front, rear, min), expected);
     }
 
-    private static Stream<Arguments> maskBsnTestSource() {
+    private static Stream<Arguments> maskExternalIdTestSource() {
         return Stream.of(
             Arguments.of("1234567890", "12******90"),
             Arguments.of("1234567890", "12******90"),
@@ -51,10 +51,10 @@ class MaskUtilTest {
         );
     }
 
-    @ParameterizedTest(name = "maskBsn({0}) = {1}")
-    @MethodSource("maskBsnTestSource")
-    void test_maskBsn(String input, String expected) {
-        assertEquals(expected, MaskUtil.maskBsn(input));
+    @ParameterizedTest(name = "maskExternalId({0}) = {1}")
+    @MethodSource("maskExternalIdTestSource")
+    void test_maskExternalId(String input, String expected) {
+        assertEquals(expected, MaskUtil.maskExternalId(input));
     }
 
 }

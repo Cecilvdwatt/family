@@ -35,8 +35,7 @@ class PersonServiceTest {
             PersonDto partner = PersonDto.builder()
                 .id(2L)
                 .name("Partner")
-                .surname("Doe")
-                .bsn("987654321")
+                .externalId("987654321")
                 .dateOfBirth(LocalDate.of(1984, 4, 4))
                 .relationships(emptyRelationships())
                 .build();
@@ -44,8 +43,7 @@ class PersonServiceTest {
             PersonDto main = PersonDto.builder()
                 .id(1L)
                 .name("Main")
-                .surname("Doe")
-                .bsn("123456789")
+                .externalId("123456789")
                 .dateOfBirth(LocalDate.of(1980, 1, 1))
                 .relationships(emptyRelationships())
                 .build();
@@ -58,16 +56,14 @@ class PersonServiceTest {
             main.getRelationships().get(RelationshipType.CHILD).addAll(Set.of(child1, child2, child3));
 
             when(
-                personDao.findAllPersonFromNameSurnameDobWithPartnerChildren(
+                personDao.findAllPersonFromNameDobWithPartnerChildren(
                     main.getName(),
-                    main.getSurname(),
                     main.getDateOfBirth()))
                 .thenReturn(Set.of(main));
 
             String result =
                 personService.hasPartnerAndChildrenNameSurnameDob(
                     main.getName(),
-                    main.getSurname(),
                     main.getDateOfBirth());
 
             assertThat(result).isEmpty();
@@ -79,8 +75,7 @@ class PersonServiceTest {
             PersonDto main = PersonDto.builder()
                 .id(1L)
                 .name("Main")
-                .surname("Doe")
-                .bsn("123456789")
+                .externalId("123456789")
                 .dateOfBirth(LocalDate.of(1980, 1, 1))
                 .relationships(emptyRelationships())
                 .build();
@@ -93,14 +88,13 @@ class PersonServiceTest {
                 ));
 
             when(
-                personDao.findAllPersonFromNameSurnameDobWithPartnerChildren(
+                personDao.findAllPersonFromNameDobWithPartnerChildren(
                     main.getName(),
-                    main.getSurname(),
                     main.getDateOfBirth()))
                 .thenReturn(Set.of(main));
 
             String result = personService.hasPartnerAndChildrenNameSurnameDob(
-                main.getName(), main.getSurname(), main.getDateOfBirth());
+                main.getName(), main.getDateOfBirth());
 
             assertThat(result).isEqualTo(PersonService.Constants.ErrorMsg.NO_PARTNER);
         }
@@ -109,19 +103,19 @@ class PersonServiceTest {
         @DisplayName("Should return false when 3 children are shared with any single partner")
         void fails_whenChildrenDoNotShareSamePartner() {
             PersonDto partner1 = PersonDto.builder()
-                .id(2L).name("Partner1").surname("Doe").bsn("987654321")
+                .id(2L).name("Partner1").externalId("987654321")
                 .dateOfBirth(LocalDate.of(1984, 4, 4))
                 .relationships(emptyRelationships())
                 .build();
 
             PersonDto partner2 = PersonDto.builder()
-                .id(3L).name("Partner2").surname("Doe").bsn("987654320")
+                .id(3L).name("Partner2").externalId("987654320")
                 .dateOfBirth(LocalDate.of(1986, 5, 5))
                 .relationships(emptyRelationships())
                 .build();
 
             PersonDto main = PersonDto.builder()
-                .id(1L).name("Main").surname("Doe").bsn("123456789")
+                .id(1L).name("Main").externalId("123456789")
                 .dateOfBirth(LocalDate.of(1980, 1, 1))
                 .relationships(emptyRelationships())
                 .build();
@@ -133,18 +127,18 @@ class PersonServiceTest {
                 buildChild(12L, "C3", main, partner2)
             ));
 
-            when(personDao.findAllPersonFromNameSurnameDobWithPartnerChildren(main.getName(), main.getSurname(), main.getDateOfBirth()))
+            when(personDao.findAllPersonFromNameDobWithPartnerChildren(main.getName(), main.getDateOfBirth()))
                 .thenReturn(Set.of(main));
 
             String result = personService.hasPartnerAndChildrenNameSurnameDob(
-                main.getName(), main.getSurname(), main.getDateOfBirth());
+                main.getName(), main.getDateOfBirth());
 
             assertThat(result).isEqualTo(PersonService.Constants.ErrorMsg.NO_SHARED_CHILDREN);
         }
     }
     
     @Nested
-    class FindBSNTests {
+    class FindExternalIdTests {
 
         @Test
         void success_whenThreeChildrenSharedWithPartner() {
@@ -152,8 +146,7 @@ class PersonServiceTest {
             PersonDto partner = PersonDto.builder()
                 .id(2L)
                 .name("Partner")
-                .surname("Doe")
-                .bsn("987654321")
+                .externalId("987654321")
                 .dateOfBirth(LocalDate.of(1984, 4, 4))
                 .relationships(emptyRelationships())
                 .build();
@@ -162,8 +155,7 @@ class PersonServiceTest {
             PersonDto main = PersonDto.builder()
                 .id(1L)
                 .name("Main")
-                .surname("Doe")
-                .bsn("123456789")
+                .externalId("123456789")
                 .dateOfBirth(LocalDate.of(1980, 1, 1))
                 .relationships(emptyRelationships())
                 .build();
@@ -177,10 +169,10 @@ class PersonServiceTest {
             main.getRelationships().get(RelationshipType.PARTNER).add(partner);
             main.getRelationships().get(RelationshipType.CHILD).addAll(Set.of(child1, child2, child3));
 
-            when(personDao.findPersonFromBsnWithPartnerChildren("123456789"))
+            when(personDao.findPersonFromExternalIdWithPartnerChildren("123456789"))
                 .thenReturn(Optional.of(main));
 
-            assertThat(personService.hasPartnerAndChildrenBsn("123456789")).isEmpty();
+            assertThat(personService.hasPartnerAndChildrenExternalId("123456789")).isEmpty();
         }
 
         @Test
@@ -189,8 +181,7 @@ class PersonServiceTest {
             PersonDto main = PersonDto.builder()
                 .id(1L)
                 .name("Main")
-                .surname("Doe")
-                .bsn("123456789")
+                .externalId("123456789")
                 .dateOfBirth(LocalDate.of(1980, 1, 1))
                 .relationships(emptyRelationships())
                 .build();
@@ -203,10 +194,10 @@ class PersonServiceTest {
                     buildChild(12L, "C3", main, null)
                 ));
 
-            when(personDao.findPersonFromBsnWithPartnerChildren("123456789"))
+            when(personDao.findPersonFromExternalIdWithPartnerChildren("123456789"))
                 .thenReturn(Optional.of(main));
 
-            assertThat(personService.hasPartnerAndChildrenBsn("123456789"))
+            assertThat(personService.hasPartnerAndChildrenExternalId("123456789"))
                 .isEqualTo(PersonService.Constants.ErrorMsg.NO_PARTNER);
         }
 
@@ -215,19 +206,19 @@ class PersonServiceTest {
         @DisplayName("Should return false when 3 children are not shared with any partners")
         void fails_whenChildrenDoNotShareSamePartner() {
             PersonDto partner1 = PersonDto.builder()
-                .id(2L).name("Partner1").surname("Doe").bsn("987654321")
+                .id(2L).name("Partner1").externalId("987654321")
                 .dateOfBirth(LocalDate.of(1984, 4, 4))
                 .relationships(emptyRelationships())
                 .build();
 
             PersonDto partner2 = PersonDto.builder()
-                .id(3L).name("Partner2").surname("Doe").bsn("987654320")
+                .id(3L).name("Partner2").externalId("987654320")
                 .dateOfBirth(LocalDate.of(1986, 5, 5))
                 .relationships(emptyRelationships())
                 .build();
 
             PersonDto main = PersonDto.builder()
-                .id(1L).name("Main").surname("Doe").bsn("123456789")
+                .id(1L).name("Main").externalId("123456789")
                 .dateOfBirth(LocalDate.of(1980, 1, 1))
                 .relationships(emptyRelationships())
                 .build();
@@ -239,10 +230,10 @@ class PersonServiceTest {
                 buildChild(12L, "C3", main, partner2)
             ));
 
-            when(personDao.findPersonFromBsnWithPartnerChildren("123456789"))
+            when(personDao.findPersonFromExternalIdWithPartnerChildren("123456789"))
                 .thenReturn(Optional.of(main));
 
-            assertThat(personService.hasPartnerAndChildrenBsn("123456789"))
+            assertThat(personService.hasPartnerAndChildrenExternalId("123456789"))
                 .isEqualTo(PersonService.Constants.ErrorMsg.NO_SHARED_CHILDREN);
         }
     }
@@ -254,8 +245,7 @@ class PersonServiceTest {
         return PersonDto.builder()
             .id(id)
             .name(name)
-            .surname("Doe")
-            .bsn("C" + id)
+            .externalId("C" + id)
             .dateOfBirth(LocalDate.of(2010, 6, 15))
             .relationships(rels)
             .build();

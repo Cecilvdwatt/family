@@ -54,13 +54,12 @@ public class PersonMapper {
         mapped.add(mappedDto);
 
         log.debug(
-            "\nMapping: {} {} {}\n * Looking for: {}\n * has relationships:\n{}",
-            person.getId(), person.getName(), person.getSurname(), relationshipFilter,
+            "\nMapping: {} {}\n * Looking for: {}\n * has relationships:\n{}",
+            person.getId(), person.getName(), relationshipFilter,
             person.getRelationships().stream()
-                .map(e -> "    - %s %s %s [Relationship: %s]".formatted(
+                .map(e -> "    - %s %s [Relationship: %s]".formatted(
                     e.getRelatedPerson().getId(),
                     e.getRelatedPerson().getName(),
-                    e.getRelatedPerson().getSurname(),
                     e.getRelationshipType()))
                 .collect(Collectors.joining("\n"))
         );
@@ -70,7 +69,7 @@ public class PersonMapper {
             RelationshipType inverse = rel.getInversRelationshipType();
             PersonEntity relatedPerson = rel.getRelatedPerson();
 
-            log.debug(" * Examining Relationship: {} {} [{}]", relatedPerson.getName(), relatedPerson.getSurname(), type);
+            log.debug(" * Examining Relationship: {} [{}]", relatedPerson.getName(), type);
 
             if (!CollectionUtils.isEmpty(relationshipFilter) && !relationshipFilter.contains(type)) {
                 log.debug("   -> Relationship type {} filtered out", type);
@@ -94,9 +93,10 @@ public class PersonMapper {
 
             mappedDto.addRelationship(type, inverse, relatedDto);
 
-            log.debug("   -> Added {} {} [{}] to {} {}",
-                relatedDto.getName(), relatedDto.getSurname(), type,
-                mappedDto.getName(), mappedDto.getSurname());
+            log.debug("   -> Added {} [{}] to {}",
+                relatedDto.getName(),
+                type,
+                mappedDto.getName());
         }
 
         log.debug("Mapped DTO (in progress): \n{}", mappedDto);
@@ -106,9 +106,8 @@ public class PersonMapper {
     private static PersonDto toDtoNoRel(PersonEntity person) {
         return PersonDto.builder()
             .id(person.getId())
-            .bsn(person.getBsn())
+            .externalId(person.getExternalId())
             .name(person.getName())
-            .surname(person.getSurname())
             .dateOfBirth(person.getDateOfBirth())
             .build();
     }

@@ -1,7 +1,7 @@
 package com.pink.family.assignment.api.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.pink.family.api.rest.server.model.PersonRequest;
+import com.pink.family.api.rest.server.model.SpecificPersonCheckRequest;
 import com.pink.family.assignment.database.entity.PersonEntity;
 import com.pink.family.assignment.database.entity.enums.RelationshipType;
 import com.pink.family.assignment.database.repository.PersonRelationshipRepository;
@@ -12,6 +12,7 @@ import io.micrometer.core.instrument.FunctionCounter;
 import io.micrometer.core.instrument.FunctionTimer;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.LongTaskTimer;
+import io.micrometer.core.instrument.Measurement;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Statistic;
 import io.micrometer.core.instrument.Timer;
@@ -89,15 +90,13 @@ class PersonsControllerConcurrency {
 
             PersonEntity main = PersonEntity.builder()
                 .name("Jane")
-                .surname("Doe")
-                .bsn("123456789")
+                .externalId("123456789")
                 .dateOfBirth(LocalDate.of(1990, 5, 20))
                 .build();
 
             PersonEntity partner = PersonEntity.builder()
                 .name("John")
-                .surname("Doe")
-                .bsn("987654321")
+                .externalId("987654321")
                 .dateOfBirth(LocalDate.of(1988, 3, 15))
                 .build();
 
@@ -140,14 +139,13 @@ class PersonsControllerConcurrency {
                 futures.add(executor.submit(() -> {
                     long start = System.nanoTime();
 
-                    PersonRequest request = new PersonRequest()
+                    SpecificPersonCheckRequest request = new SpecificPersonCheckRequest()
                         .requestId("RQ" + finalI)
                         .name("Jane")
-                        .surname("Doe")
-                        .bsn("123456789")
+                        .id("123456789")
                         .dateOfBirth(LocalDate.of(1990, 5, 20));
 
-                    mockMvc.perform(post("/persons/check-partner-children")
+                    mockMvc.perform(post("/v1/people/check-existing-person")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(request)))
                         .andExpect(content().string("")) // body check first
@@ -198,27 +196,23 @@ class PersonsControllerConcurrency {
                     metricOutput.append(" (Counter) = ").append(((Counter) meter).count());
                 } else if (meter instanceof Gauge) {
                     metricOutput.append(" (Gauge) = ").append(((Gauge) meter).value());
-                } else if (meter instanceof Timer) {
-                    Timer timer = (Timer) meter;
+                } else if (meter instanceof Timer timer) {
                     metricOutput.append(" (Timer)");
                     metricOutput.append(" | Count = ").append(timer.count());
                     metricOutput.append(" | Total Time (seconds) = ").append(timer.totalTime(getBaseTimeUnit())); // Adjust base unit as needed
                     metricOutput.append(" | Max (seconds) = ").append(timer.max(getBaseTimeUnit())); // Adjust base unit as needed
-                } else if (meter instanceof DistributionSummary) {
-                    DistributionSummary summary = (DistributionSummary) meter;
+                } else if (meter instanceof DistributionSummary summary) {
                     metricOutput.append(" (DistributionSummary)");
                     metricOutput.append(" | Count = ").append(summary.count());
                     metricOutput.append(" | Total = ").append(summary.totalAmount());
                     metricOutput.append(" | Max = ").append(summary.max());
-                } else if (meter instanceof LongTaskTimer) {
-                    LongTaskTimer ltt = (LongTaskTimer) meter;
+                } else if (meter instanceof LongTaskTimer ltt) {
                     metricOutput.append(" (LongTaskTimer)");
                     metricOutput.append(" | Active Tasks = ").append(ltt.activeTasks());
                     metricOutput.append(" | Duration (seconds) = ").append(ltt.duration(getBaseTimeUnit()));
                 } else if (meter instanceof FunctionCounter) {
                     metricOutput.append(" (FunctionCounter) = ").append(((FunctionCounter) meter).count());
-                } else if (meter instanceof FunctionTimer) {
-                    FunctionTimer ft = (FunctionTimer) meter;
+                } else if (meter instanceof FunctionTimer ft) {
                     metricOutput.append(" (FunctionTimer)");
                     metricOutput.append(" | Count = ").append(ft.count());
                     metricOutput.append(" | Total Time (seconds) = ").append(ft.totalTime(getBaseTimeUnit()));
@@ -226,7 +220,7 @@ class PersonsControllerConcurrency {
                     // For other meter types or if you still want to try extracting a general value
                     Double value = StreamSupport.stream(meter.measure().spliterator(), false)
                         .filter(ms -> ms.getStatistic() == Statistic.VALUE || ms.getStatistic() == Statistic.COUNT || ms.getStatistic() == Statistic.TOTAL)
-                        .map(e -> e.getValue())
+                        .map(Measurement::getValue)
                         .findFirst()
                         .orElse(Double.NaN);
                     metricOutput.append(" (Unknown/Other Meter Type) = ").append(value);
@@ -257,8 +251,7 @@ class PersonsControllerConcurrency {
             for (int i = 0; i < maxPersons; i++) {
                 PersonEntity p = PersonEntity.builder()
                     .name("Person" + i)
-                    .surname("Doe")
-                    .bsn(String.format("%09d", 100000000 + i))  // safe unique numeric BSN here
+                    .externalId(String.format("%09d", 100000000 + i))
                     .dateOfBirth(LocalDate.of(1990, 1, 1).plusDays(i))
                     .build();
                 created.add(personRepository.save(p));
@@ -278,8 +271,7 @@ class PersonsControllerConcurrency {
                     LocalDate dob = (c == 3) ? LocalDate.now().minusYears(10) : LocalDate.now().minusYears(20 + c);
                     PersonEntity child = PersonEntity.builder()
                         .name(p1.getName() + "Child" + c)
-                        .surname(p1.getSurname())
-                        .bsn(generate9DigitString())
+                        .externalId(generate9DigitString())
                         .dateOfBirth(dob)
                         .build();
                     child = personRepository.save(child);
@@ -304,6 +296,7 @@ class PersonsControllerConcurrency {
 
         for (int threadCount : threadCounts) {
             // Use only as many persons as threadCount (for the test)
+            assert persons != null;
             List<PersonEntity> testPersons = persons.subList(0, threadCount);
 
             ExecutorService executor = Executors.newFixedThreadPool(threadCount);
@@ -315,14 +308,13 @@ class PersonsControllerConcurrency {
                 futures.add(executor.submit(() -> {
                     long start = System.nanoTime();
 
-                    PersonRequest request = new PersonRequest()
+                    SpecificPersonCheckRequest request = new SpecificPersonCheckRequest()
                         .requestId("RQ" + finalI)
                         .name(person.getName())
-                        .surname(person.getSurname())
-                        .bsn(person.getBsn())
+                        .id(person.getExternalId())
                         .dateOfBirth(person.getDateOfBirth());
 
-                    mockMvc.perform(post("/persons/check-partner-children")
+                    mockMvc.perform(post("/v1/people/check-existing-person")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(request)))
                         .andExpect(content().string("")) // empty body on success
@@ -365,16 +357,15 @@ class PersonsControllerConcurrency {
     private PersonEntity createChild(String name, LocalDate dob) {
         return PersonEntity.builder()
             .name(name)
-            .surname("Doe")
-            .bsn(generate9DigitString())
+            .externalId(generate9DigitString())
             .dateOfBirth(dob)
             .build();
     }
 
     private String generate9DigitString() {
-        String digits = "";
+        StringBuilder digits = new StringBuilder();
         while (digits.length() < 9) {
-            digits += Long.toString(Math.abs(UUID.randomUUID().getMostSignificantBits())).replaceAll("[^0-9]", "");
+            digits.append(Long.toString(Math.abs(UUID.randomUUID().getMostSignificantBits())).replaceAll("[^0-9]", ""));
         }
         return digits.substring(0, 9);
     }

@@ -29,8 +29,7 @@ public class PersonRepositoryTest {
     void testCreateAndReadPerson() {
         PersonEntity person = PersonEntity.builder()
             .name("John")
-            .surname("Doe")
-            .bsn("123456789")
+            .externalId("123456789")
             .dateOfBirth(LocalDate.of(1990, 1, 1))
             .build();
 
@@ -45,8 +44,7 @@ public class PersonRepositoryTest {
     void testUpdatePerson() {
         PersonEntity person = PersonEntity.builder()
             .name("Jane")
-            .surname("Doe")
-            .bsn("987654321")
+            .externalId("987654321")
             .dateOfBirth(LocalDate.of(1985, 5, 15))
             .build();
 
@@ -65,8 +63,7 @@ public class PersonRepositoryTest {
     void testDeletePerson() {
         PersonEntity person = PersonEntity.builder()
             .name("Mark")
-            .surname("Smith")
-            .bsn("111222333")
+            .externalId("111222333")
             .dateOfBirth(LocalDate.of(1970, 12, 25))
             .build();
 
@@ -83,15 +80,13 @@ public class PersonRepositoryTest {
     void testDeletePersonWithRelationship() {
         PersonEntity p1 = PersonEntity.builder()
             .name("Alice")
-            .surname("Wonderland")
-            .bsn("555555555")
+            .externalId("555555555")
             .dateOfBirth(LocalDate.of(1995, 6, 10))
             .build();
 
         PersonEntity p2 = PersonEntity.builder()
             .name("Bob")
-            .surname("Builder")
-            .bsn("666666666")
+            .externalId("666666666")
             .dateOfBirth(LocalDate.of(1993, 8, 20))
             .build();
 
@@ -125,15 +120,13 @@ public class PersonRepositoryTest {
     void testAddRelationship() {
         PersonEntity p1 = PersonEntity.builder()
             .name("Alice")
-            .surname("Wonderland")
-            .bsn("555555555")
+            .externalId("555555555")
             .dateOfBirth(LocalDate.of(1995, 6, 10))
             .build();
 
         PersonEntity p2 = PersonEntity.builder()
             .name("Bob")
-            .surname("Builder")
-            .bsn("666666666")
+            .externalId("666666666")
             .dateOfBirth(LocalDate.of(1993, 8, 20))
             .build();
 
@@ -160,15 +153,13 @@ public class PersonRepositoryTest {
     void testDeleteRelationship() {
         PersonEntity p1 = PersonEntity.builder()
             .name("Charlie")
-            .surname("Chaplin")
-            .bsn("777777777")
+            .externalId("777777777")
             .dateOfBirth(LocalDate.of(1980, 3, 3))
             .build();
 
         PersonEntity p2 = PersonEntity.builder()
             .name("Diana")
-            .surname("Prince")
-            .bsn("888888888")
+            .externalId("888888888")
             .dateOfBirth(LocalDate.of(1982, 7, 7))
             .build();
 
@@ -188,38 +179,35 @@ public class PersonRepositoryTest {
 
     @Test
     @DisplayName("Should return matching person by name, surname and dob")
-    void findAllByNameAndSurnameAndDateOfBirth_returnsMatch() {
+    void findAllByNameAndDateOfBirth_returnsMatch() {
         // given
         PersonEntity person = PersonEntity.builder()
             .name("John")
-            .surname("Doe")
-            .bsn("111222333")
+            .externalId("111222333")
             .dateOfBirth(LocalDate.of(1990, 1, 1))
             .build();
         personRepository.save(person);
 
-        List<PersonEntity> result = personRepository.findAllByNameAndSurnameAndDateOfBirth("John", "Doe", LocalDate.of(1990, 1, 1));
+        List<PersonEntity> result = personRepository.findAllByNameAndDateOfBirth("John", LocalDate.of(1990, 1, 1));
 
         assertThat(result).hasSize(1);
-        assertThat(result.getFirst().getBsn()).isEqualTo("111222333");
+        assertThat(result.getFirst().getExternalId()).isEqualTo("111222333");
     }
 
     @Test
     @DisplayName("Should return empty when name or surname does not match")
-    void findAllByNameAndSurnameAndDateOfBirth_returnsEmptyIfMismatch() {
+    void findAllByNameAndDateOfBirth_returnsEmptyIfMismatch() {
         // given
         PersonEntity person = PersonEntity.builder()
             .name("Alice")
-            .surname("Smith")
-            .bsn("555555555")
+            .externalId("555555555")
             .dateOfBirth(LocalDate.of(1985, 5, 5))
             .build();
         personRepository.save(person);
 
         List<PersonEntity> result =
-            personRepository.findAllByNameAndSurnameAndDateOfBirth(
+            personRepository.findAllByNameAndDateOfBirth(
                 "Wrong",
-                "Smith",
                 LocalDate.of(1985, 5, 5));
 
         assertThat(result).isEmpty();
@@ -227,31 +215,28 @@ public class PersonRepositoryTest {
 
     @Test
     @DisplayName("Should return multiple people with same name, surname, and dob")
-    void findAllByNameAndSurnameAndDateOfBirth_returnsMultiple() {
+    void findAllByNameAndDateOfBirth_returnsMultiple() {
         // given
         personRepository.save(PersonEntity.builder()
             .name("Emma")
-            .surname("Jones")
-            .bsn("888111999")
+            .externalId("888111999")
             .dateOfBirth(LocalDate.of(2000, 3, 10))
             .build());
 
         personRepository.save(PersonEntity.builder()
             .name("Emma")
-            .surname("Jones")
-            .bsn("888111998")
+            .externalId("888111998")
             .dateOfBirth(LocalDate.of(2000, 3, 10))
             .build());
 
         List<PersonEntity> result =
-            personRepository.findAllByNameAndSurnameAndDateOfBirth(
+            personRepository.findAllByNameAndDateOfBirth(
                 "Emma",
-                "Jones",
                 LocalDate.of(2000, 3, 10));
 
         // then
         assertThat(result).hasSize(2);
-        assertThat(result).extracting(PersonEntity::getBsn)
+        assertThat(result).extracting(PersonEntity::getExternalId)
             .containsExactlyInAnyOrder("888111999", "888111998");
     }
 }

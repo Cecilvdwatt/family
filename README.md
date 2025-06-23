@@ -5,7 +5,7 @@ Swagger API specification can be found in ./spec folder.
 
 API spec was used to generate the controllers. Controller implementation can be found in _com.pink.family.assignment.api.controller.PersonsController_.
 
-Single API endpoint was added: _/persons/check-partner-children_.
+Single API endpoint was added: _/v1/people/check-existing-person_.
 
 Project is largely structured as follows:
 

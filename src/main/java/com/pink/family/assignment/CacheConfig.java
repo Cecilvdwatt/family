@@ -30,9 +30,9 @@ public class CacheConfig {
         CacheProperties.CacheSpec spec =
             cacheProperties.getCaches() == null?
                 null:
-                cacheProperties.getCaches().get(Constant.PERSON_BY_BSN);
+                cacheProperties.getCaches().get(Constant.PERSON_BY_EXTERNAL_ID);
 
-        cacheManager.registerCustomCache(Constant.PERSON_BY_BSN, Caffeine.newBuilder()
+        cacheManager.registerCustomCache(Constant.PERSON_BY_EXTERNAL_ID, Caffeine.newBuilder()
             .expireAfterWrite(
                 spec == null?
                     Duration.ofMinutes(Constant.DEFAULT_MINUTE_DURATION) :
@@ -47,9 +47,9 @@ public class CacheConfig {
         spec =
             cacheProperties.getCaches() == null?
                 null:
-                cacheProperties.getCaches().get(Constant.PERSON_BY_BSN);
+                cacheProperties.getCaches().get(Constant.PERSON_BY_EXTERNAL_ID);
 
-        cacheManager.registerCustomCache(Constant.PERSONS_BY_NAME_SURNAME, Caffeine.newBuilder()
+        cacheManager.registerCustomCache(Constant.PERSONS_BY_NAME_DOB, Caffeine.newBuilder()
             .expireAfterWrite(
                 spec == null?
                     Duration.ofMinutes(Constant.DEFAULT_MINUTE_DURATION) :
@@ -65,8 +65,8 @@ public class CacheConfig {
 
 
     public static class Constant {
-        public static final String PERSON_BY_BSN = "personsByBsn";
-        public static final String PERSONS_BY_NAME_SURNAME = "personsByNameSurname";
+        public static final String PERSON_BY_EXTERNAL_ID = "personsByExternalId";
+        public static final String PERSONS_BY_NAME_DOB = "personsByNameSurname";
 
         // Design note: just made up some default values here.
         public static int DEFAULT_MINUTE_DURATION = 10;

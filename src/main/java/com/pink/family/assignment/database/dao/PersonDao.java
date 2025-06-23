@@ -28,16 +28,16 @@ public class PersonDao {
     private final PersonRepository personRepository;
 
     /**
-     * Attempt to find a PersonEntity record in the database and any associated Children and Partners using a bsn.
+     * Attempt to find a PersonEntity record in the database and any associated Children and Partners using an external Id.
      *
      * @return
      * An empty optional if the person could not be found.
      * An optional with a PersonEntity record containing on their children and partners.
      */
-    public Optional<PersonDto> findPersonFromBsnWithPartnerChildren(String bsn) {
+    public Optional<PersonDto> findPersonFromExternalIdWithPartnerChildren(String externalId) {
         return
             personRepository
-                .findByBsn(bsn)
+                .findByExternalId(externalId)
                 .map(person ->
                     PersonMapper.toDto(
                         person,
@@ -52,13 +52,12 @@ public class PersonDao {
      * @return
      * A list of PersonEntity Records matching the provided criteria along with their children and partners.
      */
-    public Set<PersonDto> findAllPersonFromNameSurnameDobWithPartnerChildren(
+    public Set<PersonDto> findAllPersonFromNameDobWithPartnerChildren(
         String name,
-        String surname,
         LocalDate dob
     ) {
         return personRepository
-            .findAllByNameAndSurnameAndDateOfBirth(name, surname, dob)
+            .findAllByNameAndDateOfBirth(name, dob)
             .stream()
             .map(person ->
                 PersonMapper.toDto(

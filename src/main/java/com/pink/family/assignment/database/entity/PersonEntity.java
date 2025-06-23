@@ -33,9 +33,8 @@ public class PersonEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-    private String bsn;
+    private String externalId;
     private String name;
-    private String surname;
     private LocalDate dateOfBirth;
 
     @OneToMany(mappedBy = "person", cascade = CascadeType.ALL, orphanRemoval = true)
@@ -43,20 +42,18 @@ public class PersonEntity {
     @Builder.Default
     private Set<PersonRelationshipEntity> relationships = new HashSet<>();
 
-    public PersonEntity(Long id, String bsn, String name, String surname, LocalDate dateOfBirth) {
+    public PersonEntity(Long id, String externalId, String name, LocalDate dateOfBirth) {
         this.id = id;
-        this.bsn = bsn;
+        this.externalId = externalId;
         this.name = name;
-        this.surname = surname;
         this.dateOfBirth = dateOfBirth;
         this.relationships = new HashSet<>();
     }
 
-    public PersonEntity(Long id, String bsn, String name, String surname, LocalDate dateOfBirth, Set<PersonRelationshipEntity> relationships) {
+    public PersonEntity(Long id, String externalId, String name, LocalDate dateOfBirth, Set<PersonRelationshipEntity> relationships) {
         this.id = id;
-        this.bsn = bsn;
+        this.externalId = externalId;
         this.name = name;
-        this.surname = surname;
         this.dateOfBirth = dateOfBirth;
         this.relationships = relationships != null ? relationships : new HashSet<>();
     }

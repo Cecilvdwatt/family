@@ -29,23 +29,23 @@ public class PersonService {
     private final PersonDao personDao;
 
     /**
-     * Using the bsn number lookup a person record and return true if:
+     * Using the externalId number lookup a person record and return true if:
      * <br />
      * 1. A record exists for that person
      * 2. The person has a partner
      * 3. Has exactly 3 children and all 3 have that same partner listed as mother or father
      * 4. At least one of those children is under 18
      *
-     * @param bsn
-     * Burgerservicenummer of the person to check.
+     * @param externalId
+     * The external ID (passport, national ID etc.)
      * @return
      * An empty string is no issues were encountered.
      * A string containing a description of the failure cause if the check failed.
      */
-    public String hasPartnerAndChildrenBsn(String bsn) {
+    public String hasPartnerAndChildrenExternalId(String externalId) {
 
-        // Fetch the person byBSN, with only their child and partner relationships
-        Optional<PersonDto> optMainPerson = personDao.findPersonFromBsnWithPartnerChildren(bsn);
+        // Fetch the person by external Id, with only their child and partner relationships
+        Optional<PersonDto> optMainPerson = personDao.findPersonFromExternalIdWithPartnerChildren(externalId);
 
         if(optMainPerson.isEmpty()) {
             return Constants.ErrorMsg.NO_RECORD;
@@ -57,7 +57,7 @@ public class PersonService {
 
     /**
      *
-     * Using the bsn number lookup a person record and return true if:
+     * Using the External ID lookup a person record and return true if:
      * <br />
      * 1. A record exists for that person
      * 2. The person has a partner
@@ -66,17 +66,15 @@ public class PersonService {
      *
      * @param name
      * Name of the person to check
-     * @param surname
-     * Surname of the person to check
      * @param dateOfBirth
      * Date of birth of the person to check
      * @return
      * An empty string is no issues were encountered.
      * A string containing a description of the failure cause if the check failed.
      */
-    public String hasPartnerAndChildrenNameSurnameDob(String name, String surname, LocalDate dateOfBirth) {
+    public String hasPartnerAndChildrenNameSurnameDob(String name, LocalDate dateOfBirth) {
 
-        Set<PersonDto> persons = personDao.findAllPersonFromNameSurnameDobWithPartnerChildren(name, surname, dateOfBirth);
+        Set<PersonDto> persons = personDao.findAllPersonFromNameDobWithPartnerChildren(name, dateOfBirth);
 
         if(CollectionUtils.isEmpty(persons)) {
             return Constants.ErrorMsg.NO_RECORD;
@@ -86,8 +84,8 @@ public class PersonService {
         if(persons.size() > 1) {
             // usually you'd return a 400 bad request or maybe even a 409 conflict
             // with the scope of the assignment I'll just log a waning and return a false.
-            log.warn("Duplicate Matches for {} {} {}", name, surname, dateOfBirth);
-            return "Duplicate Matches for %s %s %s".formatted(name, surname, dateOfBirth);
+            log.warn("Duplicate Matches for {} {}", name, dateOfBirth);
+            return "Duplicate Matches for %s %s".formatted(name, dateOfBirth);
         }
 
         // the orElseThrow here is just for the compiler, we do a check above, so we know there is at least

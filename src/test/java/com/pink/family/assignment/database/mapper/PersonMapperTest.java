@@ -21,24 +21,21 @@ class PersonMapperTest {
         PersonEntity mainPerson = PersonEntity.builder()
             .id(1L)
             .name("Main")
-            .surname("Doe")
-            .bsn("987654321")
+            .externalId("987654321")
             .dateOfBirth(LocalDate.of(1980, 1, 1))
             .build();
 
         PersonEntity partnerPerson = PersonEntity.builder()
             .id(2L)
             .name("Partner")
-            .surname("Doe")
-            .bsn("987654321")
+            .externalId("987654321")
             .dateOfBirth(LocalDate.of(1982, 1, 1))
             .build();
 
         PersonEntity childPerson = PersonEntity.builder()
             .id(3L)
             .name("Child")
-            .surname("Doe")
-            .bsn("123456780")
+            .externalId("123456780")
             .dateOfBirth(LocalDate.of(2000, 5, 15))
             .build();
 
@@ -59,8 +56,7 @@ class PersonMapperTest {
         assertNotNull(dto);
         assertEquals(mainPerson.getId(), dto.getId());
         assertEquals(mainPerson.getName(), dto.getName());
-        assertEquals(mainPerson.getSurname(), dto.getSurname());
-        assertEquals(mainPerson.getBsn(), dto.getBsn());
+        assertEquals(mainPerson.getExternalId(), dto.getExternalId());
         assertEquals(mainPerson.getDateOfBirth(), dto.getDateOfBirth());
 
         assertNotNull(dto.getRelationships());
@@ -84,8 +80,7 @@ class PersonMapperTest {
         PersonEntity solo = PersonEntity.builder()
             .id(10L)
             .name("Solo")
-            .surname("PersonEntity")
-            .bsn("111111111")
+            .externalId("111111111")
             .dateOfBirth(LocalDate.of(1990, 1, 1))
             .build();
 
@@ -94,8 +89,7 @@ class PersonMapperTest {
         assertNotNull(dto);
         assertEquals(solo.getId(), dto.getId());
         assertEquals(solo.getName(), dto.getName());
-        assertEquals(solo.getSurname(), dto.getSurname());
-        assertEquals(solo.getBsn(), dto.getBsn());
+        assertEquals(solo.getExternalId(), dto.getExternalId());
         assertEquals(solo.getDateOfBirth(), dto.getDateOfBirth());
 
         assertNotNull(dto.getRelationships());
@@ -110,24 +104,21 @@ class PersonMapperTest {
         PersonEntity parent = PersonEntity.builder()
             .id(20L)
             .name("Parent")
-            .surname("Family")
-            .bsn("222222222")
+            .externalId("222222222")
             .dateOfBirth(LocalDate.of(1970, 6, 15))
             .build();
 
         PersonEntity child1 = PersonEntity.builder()
             .id(21L)
             .name("Child1")
-            .surname("Family")
-            .bsn("333333333")
+            .externalId("333333333")
             .dateOfBirth(LocalDate.of(2000, 3, 10))
             .build();
 
         PersonEntity child2 = PersonEntity.builder()
             .id(22L)
             .name("Child2")
-            .surname("Family")
-            .bsn("444444444")
+            .externalId("444444444")
             .dateOfBirth(LocalDate.of(2002, 7, 25))
             .build();
 
@@ -135,8 +126,7 @@ class PersonMapperTest {
         PersonEntity wife = PersonEntity.builder()
             .id(23L)
             .name("Wife")
-            .surname("Family")
-            .bsn("222222222")
+            .externalId("222222222")
             .dateOfBirth(LocalDate.of(1970, 6, 15))
             .build();
 
@@ -205,16 +195,14 @@ class PersonMapperTest {
         PersonEntity personA = PersonEntity.builder()
             .id(30L)
             .name("Alice")
-            .surname("Smith")
-            .bsn("555555555")
+            .externalId("555555555")
             .dateOfBirth(LocalDate.of(1985, 4, 20))
             .build();
 
         PersonEntity personB = PersonEntity.builder()
             .id(31L)
             .name("Bob")
-            .surname("Smith")
-            .bsn("666666666")
+            .externalId("666666666")
             .dateOfBirth(LocalDate.of(1983, 12, 11))
             .build();
 
@@ -245,24 +233,21 @@ class PersonMapperTest {
         PersonEntity person = PersonEntity.builder()
             .id(40L)
             .name("Filter")
-            .surname("Test")
-            .bsn("777777777")
+            .externalId("777777777")
             .dateOfBirth(LocalDate.of(1995, 8, 8))
             .build();
 
         PersonEntity partner = PersonEntity.builder()
             .id(41L)
             .name("Partner")
-            .surname("Test")
-            .bsn("888888888")
+            .externalId("888888888")
             .dateOfBirth(LocalDate.of(1994, 9, 9))
             .build();
 
         PersonEntity child = PersonEntity.builder()
             .id(42L)
             .name("Child")
-            .surname("Test")
-            .bsn("999999999")
+            .externalId("999999999")
             .dateOfBirth(LocalDate.of(2018, 5, 5))
             .build();
 
@@ -286,24 +271,21 @@ class PersonMapperTest {
         PersonEntity main = PersonEntity.builder()
             .id(50L)
             .name("Main")
-            .surname("NoChild")
-            .bsn("000000001")
+            .externalId("000000001")
             .dateOfBirth(LocalDate.of(1990, 1, 1))
             .build();
 
         PersonEntity child = PersonEntity.builder()
             .id(51L)
             .name("Child")
-            .surname("Hidden")
-            .bsn("000000002")
+            .externalId("000000002")
             .dateOfBirth(LocalDate.of(2010, 2, 2))
             .build();
 
         PersonEntity partner = PersonEntity.builder()
             .id(52L)
             .name("Partner")
-            .surname("Visible")
-            .bsn("000000003")
+            .externalId("000000003")
             .dateOfBirth(LocalDate.of(1991, 3, 3))
             .build();
 

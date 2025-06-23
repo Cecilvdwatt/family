@@ -6,9 +6,28 @@ info:
     An API that used to check if a person meets certain criteria.
 
 paths:
-  /persons/check-partner-children:
+  /v1/people:
     post:
-      summary: Submit a person record
+      summary: Return the details of all matching entries
+      description: >
+        Attempt to match and return details for all the provided data.
+      responses:
+        '201':
+          description: Full person object with expanded relations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FullPerson'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PersonDetailsRequest'
+
+  /v1/people/check-existing-person:
+    post:
+      summary: Submit a person record to check.
       description: >
         API is used to check if the submitted details:
         
@@ -21,17 +40,8 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PersonRequest'
+              $ref: '#/components/schemas/SpecificPersonCheckRequest'
       responses:
-        # Design Note:
-        ##############
-        # Usually I'd use a 204 for this response since no content will be sent back.
-        # Using 200 has requested in the specification. There is a larger discussion around response code adequacy
-        # but for the most part I see response codes as part of "contact" between caller and receiver, and although
-        # more specific response codes could be used, so long as both parties have an understanding of what to expect
-        # then it's fine.
-        # For example, we could return a 404 if the person has no record, but for some this might cause confusion as they
-        # consider a 404 to be exclusively for if the API endpoint doesn't exist.
         '200': # ok
           description:
             The response code returned if - 
@@ -47,6 +57,71 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
 components:
   schemas:
+    PersonDetailsRequest:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 42
+        name:
+          type: string
+          example: Ada Lovelace
+        birthDate:
+          type: string
+          format: date
+          example: "1815-12-10"
+        parent1:
+          $ref: '#/components/schemas/Relation'
+        parent2:
+          $ref: '#/components/schemas/Relation'
+        partner:
+          $ref: '#/components/schemas/Relation'
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/Relation'
+    Relation:
+      type: object
+      properties:
+        id:
+          type: integer
+
+
+    FullPerson:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 42
+        name:
+          type: string
+          example: Ada Lovelace
+        birthDate:
+          type: string
+          format: date
+          example: "1815-12-10"
+        parent1:
+          $ref: '#/components/schemas/PersonBasic'
+        parent2:
+          $ref: '#/components/schemas/PersonBasic'
+        partner:
+          $ref: '#/components/schemas/PersonBasic'
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/PersonBasic'
+
+    PersonBasic:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        birthDate:
+          type: string
+          format: date
+
     ErrorResponse:
       type: object
       properties:
@@ -62,14 +137,7 @@ components:
           type: string
           example: "RQ0001"
           description: Optional request ID to trace logs
-    # Design note:
-    ##############
-    # Keeping the PersonEntity record reasonably simple for this assignment.
-    # The more data we do send about this person the better we can do "best match" checking
-    # in case some of the details are wrong (for example a typo in the BSN or name).
-    # For the same of this assignment I'm keeping it simple and will primarily use the BSN for lookup
-    # purposes.
-    PersonRequest:
+    SpecificPersonCheckRequest:
       type: object
       properties:
         requestId:
@@ -79,19 +147,14 @@ components:
         # Design note:
         ##############
         # Did a bit of googling on this one. Hopefully it's correct.
-        bsn:
+        id:
           type: string
-          pattern: '^\d{9}$'
           example: "123456782"
-          description: 9-Digit Dutch Burgerservicenummer.
+          description: The ID of the person.
         name:
           type: string
           example: "Jane"
-          description: The first name of the person.
-        surname:
-          type: string
-          example: "Doe"
-          description: the surname / family name of the person.
+          description: The name of the person.
         dateOfBirth:
           type: string
           format: date

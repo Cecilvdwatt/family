@@ -1,7 +1,7 @@
 package com.pink.family.assignment.api.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.pink.family.api.rest.server.model.PersonRequest;
+import com.pink.family.api.rest.server.model.SpecificPersonCheckRequest;
 import com.pink.family.assignment.database.entity.PersonEntity;
 import com.pink.family.assignment.database.entity.enums.RelationshipType;
 import com.pink.family.assignment.database.repository.PersonRepository;
@@ -50,15 +50,13 @@ class PersonsControllerIT {
     void shouldReturn200_WhenPartnerAnd3ChildrenExist() throws Exception {
         PersonEntity main = PersonEntity.builder()
             .name("John")
-            .surname("Doe")
-            .bsn("123456789")
+            .externalId("123456789")
             .dateOfBirth(LocalDate.of(1990, 5, 20))
             .build();
 
         PersonEntity partner = PersonEntity.builder()
             .name("Jane")
-            .surname("Doe")
-            .bsn("987654321")
+            .externalId("987654321")
             .dateOfBirth(LocalDate.of(1988, 3, 15))
             .build();
 
@@ -92,15 +90,14 @@ class PersonsControllerIT {
         personRepository.saveAndFlush(child3);
 
         // Prepare API request object
-        PersonRequest request = new PersonRequest()
+        SpecificPersonCheckRequest request = new SpecificPersonCheckRequest()
             .requestId("RQ123")
             .name("Jane")
-            .surname("Doe")
-            .bsn("123456789")
+            .id("123456789")
             .dateOfBirth(LocalDate.of(1990, 5, 20));
 
         // Perform POST request and expect 200 OK
-        mockMvc.perform(post("/persons/check-partner-children")
+        mockMvc.perform(post("/v1/people/check-existing-person")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)))
             .andExpect(status().isOk());
@@ -111,20 +108,18 @@ class PersonsControllerIT {
     @DisplayName("Should return 444 when no partner or children exist")
     void shouldReturn444_WhenNoPartnerOrChildren() throws Exception {
         personRepository.save(PersonEntity.builder()
-            .bsn("000000000")
+            .externalId("000000000")
             .name("Lonely")
-            .surname("PersonEntity")
             .dateOfBirth(LocalDate.of(1990, 1, 1))
             .build());
 
-        PersonRequest apiRequest = new PersonRequest()
+        SpecificPersonCheckRequest apiRequest = new SpecificPersonCheckRequest()
             .requestId("REQ444")
-            .bsn("000000000")
+            .id("000000000")
             .name("Lonely")
-            .surname("PersonEntity")
             .dateOfBirth(LocalDate.of(1990, 1, 1));
 
-        mockMvc.perform(post("/persons/check-partner-children")
+        mockMvc.perform(post("/v1/people/check-existing-person")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(apiRequest)))
             .andExpect(status().is(444))
@@ -138,14 +133,12 @@ class PersonsControllerIT {
     void shouldReturn444_WhenMoreThan3ChildrenExist() throws Exception {
         PersonEntity main = PersonEntity.builder()
             .name("Anna")
-            .surname("Smith")
-            .bsn("111222333")
+            .externalId("111222333")
             .dateOfBirth(LocalDate.of(1985, 7, 15))
             .build();
         PersonEntity partner = PersonEntity.builder()
             .name("Mark")
-            .surname("Smith")
-            .bsn("444555666")
+            .externalId("444555666")
             .dateOfBirth(LocalDate.of(1984, 6, 10))
             .build();
         main = personRepository.save(main);
@@ -170,14 +163,13 @@ class PersonsControllerIT {
         personRepository.saveAndFlush(main);
         personRepository.saveAndFlush(partner);
 
-        PersonRequest request = new PersonRequest()
+        SpecificPersonCheckRequest request = new SpecificPersonCheckRequest()
             .requestId("RQ999")
             .name("Anna")
-            .surname("Smith")
-            .bsn("111222333")
+            .id("111222333")
             .dateOfBirth(LocalDate.of(1985, 7, 15));
 
-        mockMvc.perform(post("/persons/check-partner-children")
+        mockMvc.perform(post("/v1/people/check-existing-person")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)))
             .andExpect(status().is(444))
@@ -191,20 +183,17 @@ class PersonsControllerIT {
     void shouldReturn444_WhenChildrenHaveDifferentPartners() throws Exception {
         PersonEntity main = PersonEntity.builder()
             .name("Emma")
-            .surname("Johnson")
-            .bsn("222333444")
+            .externalId("222333444")
             .dateOfBirth(LocalDate.of(1987, 8, 20))
             .build();
         PersonEntity partner1 = PersonEntity.builder()
             .name("Liam")
-            .surname("Johnson")
-            .bsn("555666777")
+            .externalId("555666777")
             .dateOfBirth(LocalDate.of(1986, 7, 10))
             .build();
         PersonEntity partner2 = PersonEntity.builder()
             .name("Noah")
-            .surname("Johnson")
-            .bsn("888999000")
+            .externalId("888999000")
             .dateOfBirth(LocalDate.of(1985, 5, 5))
             .build();
 
@@ -230,14 +219,13 @@ class PersonsControllerIT {
         personRepository.saveAndFlush(partner1);
         personRepository.saveAndFlush(partner2);
 
-        PersonRequest request = new PersonRequest()
+        SpecificPersonCheckRequest request = new SpecificPersonCheckRequest()
             .requestId("RQ888")
             .name("Emma")
-            .surname("Johnson")
-            .bsn("222333444")
+            .id("222333444")
             .dateOfBirth(LocalDate.of(1987, 8, 20));
 
-        mockMvc.perform(post("/persons/check-partner-children")
+        mockMvc.perform(post("/v1/people/check-existing-person")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)))
             .andExpect(status().is(444))
@@ -252,14 +240,12 @@ class PersonsControllerIT {
     void shouldReturn444_WhenChildrenAreAllAdults() throws Exception {
         PersonEntity main = PersonEntity.builder()
             .name("Oliver")
-            .surname("Brown")
-            .bsn("333444555")
+            .externalId("333444555")
             .dateOfBirth(LocalDate.of(1980, 9, 30))
             .build();
         PersonEntity partner = PersonEntity.builder()
             .name("Sophia")
-            .surname("Brown")
-            .bsn("666777888")
+            .externalId("666777888")
             .dateOfBirth(LocalDate.of(1982, 10, 25))
             .build();
 
@@ -282,14 +268,13 @@ class PersonsControllerIT {
         personRepository.saveAndFlush(main);
         personRepository.saveAndFlush(partner);
 
-        PersonRequest request = new PersonRequest()
+        SpecificPersonCheckRequest request = new SpecificPersonCheckRequest()
             .requestId("RQ777")
             .name("Oliver")
-            .surname("Brown")
-            .bsn("333444555")
+            .id("333444555")
             .dateOfBirth(LocalDate.of(1980, 9, 30));
 
-        mockMvc.perform(post("/persons/check-partner-children")
+        mockMvc.perform(post("/v1/people/check-existing-person")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)))
             .andExpect(status().is(444))
@@ -300,19 +285,17 @@ class PersonsControllerIT {
 
 
     @Test
-    @DisplayName("Should return 200 when no BSN but name, surname, and DOB match")
-    void shouldReturn200_WhenNoBsnButNameSurnameDobMatch() throws Exception {
+    @DisplayName("Should return 200 when no external id but name, surname, and DOB match")
+    void shouldReturn200_WhenNoExternalIdButNameSurnameDobMatch() throws Exception {
         PersonEntity main = PersonEntity.builder()
             .name("Lucas")
-            .surname("White")
-            .bsn("444555666")
+            .externalId("444555666")
             .dateOfBirth(LocalDate.of(1992, 11, 11))
             .build();
 
         PersonEntity partner = PersonEntity.builder()
             .name("Mia")
-            .surname("White")
-            .bsn("777888999")
+            .externalId("777888999")
             .dateOfBirth(LocalDate.of(1990, 12, 12))
             .build();
 
@@ -335,13 +318,12 @@ class PersonsControllerIT {
         personRepository.saveAndFlush(main);
         personRepository.saveAndFlush(partner);
 
-        PersonRequest request = new PersonRequest()
+        SpecificPersonCheckRequest request = new SpecificPersonCheckRequest()
             .requestId("RQ666")
             .name("Lucas")
-            .surname("White")
             .dateOfBirth(LocalDate.of(1992, 11, 11));
 
-        mockMvc.perform(post("/persons/check-partner-children")
+        mockMvc.perform(post("/v1/people/check-existing-person")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)))
             .andExpect(status().isOk());
@@ -350,8 +332,7 @@ class PersonsControllerIT {
     private PersonEntity createChild(String name, LocalDate dob) {
         return PersonEntity.builder()
             .name(name)
-            .surname("Doe")
-            .bsn(UUID.randomUUID().toString().replaceAll("[^0-9]", "").substring(0, 9))
+            .externalId(UUID.randomUUID().toString().replaceAll("[^0-9]", "").substring(0, 9))
             .dateOfBirth(dob)
             .build();
     }

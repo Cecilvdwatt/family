@@ -20,11 +20,9 @@ public class PersonDto {
     @Getter
     private Long id;
     @Getter
-    private String bsn;
+    private String externalId;
     @Getter
     private String name;
-    @Getter
-    private String surname;
     @Getter
     private LocalDate dateOfBirth;
     private Map<RelationshipType, Set<PersonDto>> relationships;
@@ -69,12 +67,11 @@ public class PersonDto {
     public String toString() {
         return
 
-            "PersonEntity DTO \n - %s - %s %s [%s] relationships=%s"
+            "PersonEntity DTO \n - %s - %s [%s] relationships=%s"
                 .formatted(
                     id,
                     name,
-                    surname,
-                    MaskUtil.maskBsn(bsn),
+                    MaskUtil.maskExternalId(externalId),
                     getRelationships()
                         .entrySet()
                         .stream()
@@ -84,7 +81,7 @@ public class PersonDto {
                                 "[%s - %s]".formatted(
                                     e.getKey(),
                                     e.getValue().stream()
-                                        .map(r -> r.name + " " + r.surname)
+                                        .map(r -> r.name)
                                         .collect(Collectors.joining(", "))
                                 )
                             )

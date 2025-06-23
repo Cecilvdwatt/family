@@ -22,12 +22,12 @@ public interface PersonRepository extends JpaRepository<PersonEntity, Long> {
     // to the DTOs without making it result in stackoverflows!
 
     @EntityGraph(attributePaths = {"relationships"}) // set which items should be fetched eagerly.
-    @Cacheable(cacheNames = CacheConfig.Constant.PERSON_BY_BSN)
-    Optional<PersonEntity> findByBsn(String bsn);
+    @Cacheable(cacheNames = CacheConfig.Constant.PERSON_BY_EXTERNAL_ID)
+    Optional<PersonEntity> findByExternalId(String externalId);
 
     @EntityGraph(attributePaths = {"relationships"})
-    @Cacheable(value = CacheConfig.Constant.PERSONS_BY_NAME_SURNAME, key = "#name + '_' + #surname + '_' + #dob")
-    List<PersonEntity> findAllByNameAndSurnameAndDateOfBirth(String name, String surname, LocalDate dob);
+    @Cacheable(value = CacheConfig.Constant.PERSONS_BY_NAME_DOB, key = "#name + '_' + #dob")
+    List<PersonEntity> findAllByNameAndDateOfBirth(String name, LocalDate dob);
 
 
 }

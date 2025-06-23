@@ -13,9 +13,9 @@ public class MaskUtil {
     }
 
     /**
-     * Mask te BSN value revealing only the first and last two numbers
+     * Mask te External Id value revealing only the first and last two numbers
      */
-    public static String maskBsn(String input) {
+    public static String maskExternalId(String input) {
         return mask(input, 2, 2, 4);
     }
 

@@ -1,7 +1,9 @@
 package com.pink.family.assignment.api.controller;
 
-import com.pink.family.api.rest.server.model.PersonRequest;
-import com.pink.family.api.rest.server.reference.PersonsApi;
+import com.pink.family.api.rest.server.model.FullPerson;
+import com.pink.family.api.rest.server.model.PersonDetailsRequest;
+import com.pink.family.api.rest.server.model.SpecificPersonCheckRequest;
+import com.pink.family.api.rest.server.reference.V1Api;
 import com.pink.family.assignment.api.exception.PinkApiException;
 import com.pink.family.assignment.service.LoggingService;
 import com.pink.family.assignment.service.PersonService;
@@ -18,36 +20,30 @@ import org.springframework.web.bind.annotation.RestController;
 @Slf4j
 @RestController
 @RequiredArgsConstructor
-public class PersonsController implements PersonsApi {
+public class PersonsController implements V1Api {
 
     private final PersonService personService;
     private final LoggingService loggingService;
 
     @Override
-    public ResponseEntity<Void> personsCheckPartnerChildrenPost(PersonRequest person) {
+    public ResponseEntity<Void> v1PeopleCheckExistingPersonPost(SpecificPersonCheckRequest specificPersonCheckRequest) {
 
-        loggingService.setRequestId(person.getRequestId());
+        loggingService.setRequestId(specificPersonCheckRequest.getRequestId());
 
         String result = "";
-        // we have a bsn to try and use
-        if(!ObjectUtils.isEmpty(person.getBsn())) {
-            result = personService.hasPartnerAndChildrenBsn(person.getBsn());
-        } else if(ObjectUtils.isEmpty(person.getName()) && ObjectUtils.isEmpty(person.getSurname()) && ObjectUtils.isEmpty(person.getDateOfBirth())) {
-            // Design note:
-            ///////////////
-            // could have created multiple API endpoints that receive specific data
-            // but the requirement was to receive a Person record. As such decided to go for a single API
-            // that does different fallback lookups.
-            throw new PinkApiException("Request is missing BSN, Name, Surname and Date of Birth", 444);
+        // we have a external id to try and use
+        if(!ObjectUtils.isEmpty(specificPersonCheckRequest.getId())) {
+            result = personService.hasPartnerAndChildrenExternalId(specificPersonCheckRequest.getId());
+        } else if(ObjectUtils.isEmpty(specificPersonCheckRequest.getName()) && ObjectUtils.isEmpty(specificPersonCheckRequest.getDateOfBirth())) {
+            throw new PinkApiException("Request is missing ID, Name and Date of Birth", 444);
         }
 
-        // We were unable to find a matching record using the Bsn try the
-        // name, surname and dob next.
+        // We were unable to find a matching record using the External ID try the
+        // name and dob next.
         if(result.equals(PersonService.Constants.ErrorMsg.NO_RECORD)) {
             result = personService.hasPartnerAndChildrenNameSurnameDob(
-                person.getName(),
-                person.getSurname(),
-                person.getDateOfBirth()
+                specificPersonCheckRequest.getName(),
+                specificPersonCheckRequest.getDateOfBirth()
             );
         }
 
@@ -59,5 +55,10 @@ public class PersonsController implements PersonsApi {
             throw new PinkApiException(result, 444);
         }
 
+    }
+
+    @Override
+    public ResponseEntity<FullPerson> v1PeoplePost(PersonDetailsRequest personDetailsRequest) {
+        return null;
     }
 }
