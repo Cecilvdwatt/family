@@ -16,13 +16,17 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.ToString;
+import lombok.extern.slf4j.Slf4j;
 import org.hibernate.proxy.HibernateProxy;
 
 import java.time.LocalDate;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
+@Slf4j
 @Entity
 @Table(name = "persons")
 @Getter
@@ -37,6 +41,7 @@ public class PersonEntity {
     @Column(name = "id")
     private Long internalId;
     @Nullable
+    @Column(unique = true, nullable = true)
     private Long externalId;
     @Nullable
     private String name;
@@ -70,21 +75,30 @@ public class PersonEntity {
                 "Both persons must have non-null IDs before adding relationship. Ensure entities have been saved first.");
         }
 
-        PersonRelationshipEntity rel = new PersonRelationshipEntity();
-        rel.setPerson(this);
-        rel.setRelatedPerson(related);
-        rel.setRelationshipType(type);
-        rel.setInversRelationshipType(inverseType);
-        rel.setId(new PersonRelationshipId(this.getInternalId(), related.getInternalId()));
-        this.relationships.add(rel);
+        log.info("{} : Adding relationship {} with {}", this, type, related);
 
-        PersonRelationshipEntity inverse = new PersonRelationshipEntity();
-        inverse.setPerson(related);
-        inverse.setRelatedPerson(this);
-        inverse.setRelationshipType(inverseType);
-        inverse.setInversRelationshipType(type);
-        inverse.setId(new PersonRelationshipId(related.getInternalId(), this.getInternalId()));
-        related.relationships.add(inverse);
+        // because sets we won't add multiples but there's no need to create a new object if we don't have to
+        var id = new PersonRelationshipId(this.getInternalId(), related.getInternalId());
+        if(!this.relationships.contains(id)) {
+            PersonRelationshipEntity rel = new PersonRelationshipEntity();
+            rel.setPerson(this);
+            rel.setRelatedPerson(related);
+            rel.setRelationshipType(type);
+            rel.setInversRelationshipType(inverseType);
+            rel.setId(id);
+            this.relationships.add(rel);
+        }
+
+        id = new PersonRelationshipId(related.getInternalId(), this.getInternalId());
+        if(!related.relationships.contains(id)) {
+            PersonRelationshipEntity inverse = new PersonRelationshipEntity();
+            inverse.setPerson(related);
+            inverse.setRelatedPerson(this);
+            inverse.setRelationshipType(inverseType);
+            inverse.setInversRelationshipType(type);
+            inverse.setId(id);
+            related.relationships.add(inverse);
+        }
     }
 
     @Override
@@ -114,4 +128,67 @@ public class PersonEntity {
             ((HibernateProxy) this).getHibernateLazyInitializer().getPersistentClass().hashCode() :
             getClass().hashCode();
     }
+
+    public String prettyPrint() {
+        StringBuilder sb = new StringBuilder();
+        prettyPrintHelper(sb, 0, new HashSet<>());
+        return sb.toString();
+    }
+
+    private void prettyPrintHelper(StringBuilder sb, int indent, Set<Long> visited) {
+        if (internalId == null) {
+            sb.append("  ".repeat(indent)).append("[Person with null internalId]\n");
+            return;
+        }
+        if (visited.contains(internalId)) {
+            sb.append("  ".repeat(indent))
+                .append("[Already printed person ID ").append(internalId).append("]\n");
+            return;
+        }
+        visited.add(internalId);
+
+        String indentStr = "  ".repeat(indent);
+        sb.append(indentStr)
+            .append("PersonEntity: ")
+            .append(name).append(" (internalId=").append(internalId)
+            .append(", externalId=").append(externalId)
+            .append(", dob=").append(dateOfBirth).append(")\n");
+
+        if (relationships != null && !relationships.isEmpty()) {
+            for (PersonRelationshipEntity rel : relationships) {
+                if (rel == null) continue;
+                RelationshipType type = rel.getRelationshipType();
+                PersonEntity related = rel.getRelatedPerson();
+                if (related == null) continue;
+
+                sb.append(indentStr).append("  ").append(type).append(":\n");
+                related.prettyPrintHelper(sb, indent + 2, visited);
+            }
+        }
+    }
+
+    @Override
+    public String toString() {
+        // Count relationships by type
+        Map<RelationshipType, Long> relCountByType = getRelationships().stream()
+            .collect(Collectors.groupingBy(
+                PersonRelationshipEntity::getRelationshipType,
+                Collectors.counting()
+            ));
+
+        // Build relationship summary string
+        String relSummary = relCountByType.entrySet().stream()
+            .map(e -> String.format("%s[%d]", e.getKey(), e.getValue()))
+            .collect(Collectors.joining("; "));
+
+        return String.format("PersonEntity{id=%d, externalId=%s, name='%s', dob=%s, relationships=[%s]}",
+            getInternalId(),
+            getExternalId(),
+            getName(),
+            getDateOfBirth(),
+            relSummary.isEmpty() ? "none" : relSummary
+        );
+    }
+
+
 }

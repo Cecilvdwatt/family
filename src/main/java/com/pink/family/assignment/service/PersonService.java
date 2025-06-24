@@ -1,156 +1,156 @@
 package com.pink.family.assignment.service;
 
+import com.pink.family.assignment.api.exception.PinkDebugException;
+import com.pink.family.assignment.api.exception.PinkSystemException;
 import com.pink.family.assignment.database.dao.PersonDao;
 import com.pink.family.assignment.database.entity.enums.RelationshipType;
 import com.pink.family.assignment.dto.PersonDto;
-import jakarta.annotation.Nullable;
-import lombok.RequiredArgsConstructor;
+import com.pink.family.assignment.util.MaskUtil;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.logging.log4j.util.Strings;
 import org.springframework.stereotype.Service;
-import org.springframework.util.CollectionUtils;
 
 import java.time.LocalDate;
-import java.time.Period;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 
-
-/**
- * Service class for performing PersonEntity related operations.
- * This class contains the business logic around a PersonEntity entity, and is responsible for retrieving the
- * person data.
- */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class PersonService {
 
     private final PersonDao personDao;
 
-    /**
-     * Using the externalId number lookup a person record and return true if:
-     * <br />
-     * 1. A record exists for that person
-     * 2. The person has a partner
-     * 3. Has exactly 3 children and all 3 have that same partner listed as mother or father
-     * 4. At least one of those children is under 18
-     *
-     * @param externalId
-     * The external ID (passport, national ID etc.)
-     * @return
-     * An empty string is no issues were encountered.
-     * A string containing a description of the failure cause if the check failed.
-     */
-    public String hasPartnerAndChildrenExternalId(Long externalId) {
+    public PersonService(PersonDao personDao) {
+        this.personDao = personDao;
+    }
 
-        // Fetch the person by external Id, with only their child and partner relationships
-        Optional<PersonDto> optMainPerson = personDao.findPersonFromExternalIdWithPartnerChildren(externalId);
-
-        if(optMainPerson.isEmpty()) {
-            return Constants.ErrorMsg.NO_RECORD;
+    public static class Constants {
+        public static class ErrorMsg {
+            public static final String NO_RECORD = "No record found";
+            public static final String NO_PARTNER = "Does not have a partner";
+            public static final String NO_SHARED_CHILDREN = "No shared children";
+            public static final String NO_UNDERAGE_CHILD = "Does not have a child under 18";
+            public static final String NOT_EXACTLY_3_CHILDREN = "Does not have exactly 3 children";
+            public static final String NO_DISTINCT_RECORD = "Could not find a single matching record";
         }
-        // if no person was found we return false.
-        return this.hasPartnerAndChildren(optMainPerson.get());
-
     }
 
     /**
-     *
-     * Using the External ID lookup a person record and return true if:
-     * <br />
-     * 1. A record exists for that person
-     * 2. The person has a partner
-     * 3. Has exactly 3 children and all 3 have that same partner listed as mother or father
-     * 4. At least one of those children is under 18
-     *
-     * @param name
-     * Name of the person to check
-     * @param dateOfBirth
-     * Date of birth of the person to check
-     * @return
-     * An empty string is no issues were encountered.
-     * A string containing a description of the failure cause if the check failed.
+     * Check by name + DOB if person has a partner and exactly 3 children
+     * shared with that partner, and at least one child under 18.
      */
-    public String hasPartnerAndChildrenNameSurnameDob(String name, LocalDate dateOfBirth) {
+    public Optional<String> hasPartnerAndChildrenNameSurnameDob(String name, LocalDate dob) {
+        Set<PersonDto> persons = personDao.findAllPersonFromNameDobWithPartnerChildren(name, dob);
 
-        Set<PersonDto> persons = personDao.findAllPersonFromNameDobWithPartnerChildren(name, dateOfBirth);
-
-        if(CollectionUtils.isEmpty(persons)) {
-            return Constants.ErrorMsg.NO_RECORD;
+        if(persons.isEmpty()) {
+            log.debug("No person found with name {} and dob {}", name, dob, PinkDebugException.inst());
+            return Optional.of(Constants.ErrorMsg.NO_RECORD);
         }
-        // Although very unlikely it is possible for two people to have the
-        // same name and date of birth
+
         if(persons.size() > 1) {
-            // usually you'd return a 400 bad request or maybe even a 409 conflict
-            // with the scope of the assignment I'll just log a waning and return a false.
-            log.warn("Duplicate Matches for {} {}", name, dateOfBirth);
-            return "Duplicate Matches for %s %s".formatted(name, dateOfBirth);
+            log.debug("Found Multiple of {} {}", name, dob, PinkDebugException.inst());
+            return Optional.of(Constants.ErrorMsg.NO_DISTINCT_RECORD);
         }
 
-        // the orElseThrow here is just for the compiler, we do a check above, so we know there is at least
-        // 1 record.
-        return hasPartnerAndChildren(persons.stream().findFirst().orElseThrow());
+        for (PersonDto person : persons) {
+            String error = validatePersonPartnerAndChildren(person);
+            if (error.isEmpty()) {
+                return Optional.empty();
+            } else {
+                return Optional.of(error);
+            }
+        }
+
+        throw new PinkSystemException("Code should be unreachable");
+    }
+
+    /**
+     * Check by external ID if person has a partner and exactly 3 children
+     * shared with that partner, and at least one child under 18.
+     *
+     * @return
+     * An empty optional if no issues were encountered. An optional containing an error if an issues was encountered.
+     */
+    public Optional<String> hasPartnerAndChildrenExternalId(Long externalId) {
+        Set<PersonDto> personSet = personDao.findPersonFromExternalId(externalId, 3);
+
+        if(personSet.isEmpty()) {
+            log.debug("No person found for external ID {}", MaskUtil.maskExternalId(externalId), PinkDebugException.inst());
+            return Optional.of(Constants.ErrorMsg.NO_RECORD);
+        } else if(personSet.size() > 1) {
+            log.debug("Found Multiple of {}", MaskUtil.maskExternalId(externalId), PinkDebugException.inst());
+            return Optional.of(Constants.ErrorMsg.NO_DISTINCT_RECORD);
+        }
+
+        String error = validatePersonPartnerAndChildren(personSet.iterator().next());
+        if (error.isEmpty()) {
+            return Optional.empty();
+        } else {
+            return Optional.of(error);
+        }
 
     }
 
-
     /**
-     * For the provided person record check that:
-     * 1. The person has a partner
-     * 2. Has exactly 3 children and all 3 have that same partner listed as mother or father
-     * 3. At least one of those children is under 18
-     * @param mainPerson
-     * The person record to check.
-     * @return
-     * An empty string is no issues were encountered.
-     * A string containing a description of the failure cause if the check failed.
-     *
+     * Core validation logic used by both methods.
      */
-    private String hasPartnerAndChildren(@Nullable PersonDto mainPerson) {
-        if (mainPerson == null) {
-            return Constants.ErrorMsg.EMPTY_PERSON;
+    private String validatePersonPartnerAndChildren(PersonDto person) {
+
+        log.debug("Validating that Person has Partner and shared Children:\n{}", person);
+
+        Set<PersonDto> children = person.getRelations(RelationshipType.PARENT);
+        Set<PersonDto> partners = person.getRelations(RelationshipType.PARTNER);
+
+        if (children == null || children.size() != 3) {
+            log.debug("Person {} does not have exactly 3 children", person.getName(), PinkDebugException.inst());
+            return Constants.ErrorMsg.NOT_EXACTLY_3_CHILDREN;
         }
 
-        Set<PersonDto> partners = mainPerson.getRelations(RelationshipType.PARTNER);
-        if (partners.isEmpty()) {
+        if (partners == null || partners.isEmpty()) {
+            log.debug("Person {} does not any partners", person, PinkDebugException.inst());
             return Constants.ErrorMsg.NO_PARTNER;
         }
 
-        Set<PersonDto> children = mainPerson.getRelations(RelationshipType.PARENT);
-        if (children.size() != 3) {
-            return Constants.ErrorMsg.NUM_CHILDREN;
+        boolean hasUnder18 = children.stream()
+            .anyMatch(child -> child.getDateOfBirth() != null &&
+                child.getDateOfBirth().isAfter(LocalDate.now().minusYears(18)));
+
+        if (!hasUnder18) {
+            log.debug("All children of {} are 18 or older", person, PinkDebugException.inst());
+            return Constants.ErrorMsg.NO_UNDERAGE_CHILD;
         }
 
-        boolean matchFound
-            = partners
-                .stream()
-                .anyMatch(
-                    partner -> {
-                        // Count how many children share this partner as a parent via inverse CHILD relationship
-                        long matchingChildren
-                            = children
-                                .stream()
-                                .filter(p -> p.getInternalId().equals(partner.getInternalId()))
-                                .count();
+        // Find partners shared by all children (excluding the main person)
+        Set<PersonDto> sharedPartners = new HashSet<>(partners);
 
-                        if (matchingChildren != 3) {
-                            return false;
-                        }
+        for (PersonDto child : children) {
+            Set<PersonDto> childParents = child.getRelations(RelationshipType.CHILD);
 
-                    // Check if any child is under 18
-                    return
-                        children
-                            .stream()
-                            .anyMatch(
-                                child ->
-                                    child.getDateOfBirth() != null &&
-                                    Period.between(child.getDateOfBirth(), LocalDate.now()).getYears() < 18);
-                });
+            // We expect at least the primary parent to be there.
+            if (childParents == null || childParents.isEmpty()) {
+                log.error("Child {} has no parent records. This should not be possible, likely a mapping or data issue", child);
+                throw new PinkSystemException("CHILD " + child.getName() + " has no parent records");
+            }
 
-        return matchFound ? Strings.EMPTY : Constants.ErrorMsg.NO_SHARED_CHILDREN;
+            // Remove main person, only keep other parents/partners
+            Set<PersonDto> otherParents = new HashSet<>(childParents);
+            otherParents.remove(person);
+
+            if (otherParents.isEmpty()) {
+                // child has no other parent besides main person
+                log.debug("Child {} haas no other parents", child, PinkDebugException.inst());
+                return Constants.ErrorMsg.NO_SHARED_CHILDREN;
+            }
+
+            // intersecting, checking if the children is shared between the main and any of their partners.
+            sharedPartners.retainAll(otherParents);
+
+            if (sharedPartners.isEmpty()) {
+                log.debug("No children are shared by {}", person, PinkDebugException.inst());
+                return Constants.ErrorMsg.NO_SHARED_CHILDREN;
+            }
+        }
+
+        return ""; // no error
     }
-
 
 
     public PersonDto retrieveAndUpdate(
@@ -162,19 +162,11 @@ public class PersonService {
         Set<Long> childrenIds
     )
     {
-        return personDao.updatePerson(externalId, name, dateOfBirth, parentsId, partnerIds, childrenIds);
+        Map<RelationshipType, Set<Long>> relations = new HashMap<>();
+        relations.put(RelationshipType.CHILD, parentsId);
+        relations.put(RelationshipType.PARENT, childrenIds);
+        relations.put(RelationshipType.PARTNER, partnerIds);
+
+        return personDao.updatePerson(externalId, name, dateOfBirth, relations);
     }
-
-    public static class Constants {
-
-        public static class ErrorMsg {
-
-            public static final String NO_RECORD = "Could not find Person.";
-            public static final String NO_SHARED_CHILDREN = "Does not share 3 children with a partner of which at least 1 is under 18";
-            public static final String NUM_CHILDREN = "Does not have exactly 3 children";
-            public static final String NO_PARTNER = "Has No Partner";
-            public static final String EMPTY_PERSON = "Null PersonEntity Record.";
-        }
-    }
-
 }

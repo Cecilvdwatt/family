@@ -1,193 +1,308 @@
 package com.pink.family.assignment.database.dao;
 
 import com.pink.family.assignment.database.entity.PersonEntity;
+import com.pink.family.assignment.database.entity.PersonRelationshipEntity;
+import com.pink.family.assignment.database.entity.id.PersonRelationshipId;
 import com.pink.family.assignment.database.entity.enums.RelationshipType;
-import com.pink.family.assignment.database.repository.PersonRelationshipRepository;
-import com.pink.family.assignment.database.repository.PersonRepository;
+
 import com.pink.family.assignment.dto.PersonDto;
-import jakarta.persistence.EntityManager;
-import lombok.extern.slf4j.Slf4j;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
-import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@Slf4j
 @SpringBootTest
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.ANY)
 @Transactional
 public class PersonDaoTests {
-
-    @Autowired
-    private PersonRepository personRepository;
-
-    @Autowired
-    private PersonRelationshipRepository personRelationshipRepository;
 
     @Autowired
     private PersonDao personDao;
 
     @Autowired
-    private EntityManager entityManager;
+    private PersonRelationshipDao relationshipDao;
 
-    @Nested
-    class FindPersonTests {
+    @Test
+    void testCreateAndReadPerson() {
+        PersonEntity person = PersonEntity.builder()
+            .name("John")
+            .externalId(123456789L)
+            .dateOfBirth(LocalDate.of(1990, 1, 1))
+            .build();
 
-        @Test
-        void testFindPersonFromExternalIdWithPartnerChildren() {
-            // Create entities
-            PersonEntity mainPerson = PersonEntity.builder()
-                .externalId(1L)
-                .name("John")
-                .dateOfBirth(LocalDate.of(1980, 1, 1))
-                .build();
-            PersonEntity child = PersonEntity.builder()
-                .externalId(2L)
-                .name("Child")
-                .dateOfBirth(LocalDate.of(2010, 5, 12))
-                .build();
-            PersonEntity partner = PersonEntity.builder()
-                .externalId(3L)
-                .name("Wife")
-                .dateOfBirth(LocalDate.of(1982, 3, 22))
-                .build();
+        PersonEntity saved = personDao.save(person);
 
-            // Save all persons first (assigns DB IDs)
-            mainPerson = personRepository.saveAndFlush(mainPerson);
-            child = personRepository.saveAndFlush(child);
-            partner = personRepository.saveAndFlush(partner);
+        Optional<PersonEntity> found = personDao.findById(saved.getInternalId());
+        assertThat(found).isPresent();
+        assertThat(found.get().getName()).isEqualTo("John");
+    }
+
+    @Test
+    void testUpdatePerson() {
+        PersonEntity person = PersonEntity.builder()
+            .name("Jane")
+            .externalId(987654321L)
+            .dateOfBirth(LocalDate.of(1985, 5, 15))
+            .build();
+
+        PersonEntity saved = personDao.save(person);
+
+        saved.setName("Janet");
+        PersonEntity updated = personDao.save(saved);
+
+        Optional<PersonEntity> found = personDao.findById(updated.getInternalId());
+        assertThat(found).isPresent();
+        assertThat(found.get().getName()).isEqualTo("Janet");
+    }
+
+    @Test
+    @DisplayName("Test that a PersonEntity can be successfully deleted")
+    void testDeletePerson() {
+        PersonEntity person = PersonEntity.builder()
+            .name("Mark")
+            .externalId(111222333L)
+            .dateOfBirth(LocalDate.of(1970, 12, 25))
+            .build();
+
+        PersonEntity saved = personDao.save(person);
+        Long id = saved.getInternalId();
+
+        personDao.delete(saved);
+        Optional<PersonEntity> found = personDao.findById(id);
+        assertThat(found).isNotPresent();
+    }
+
+    @Test
+    @DisplayName("Test that a PersonEntity can be successfully deleted if they have a relationship")
+    void testDeletePersonWithRelationship() {
+        PersonEntity p1 = PersonEntity.builder()
+            .name("Alice")
+            .externalId(555555555L)
+            .dateOfBirth(LocalDate.of(1995, 6, 10))
+            .build();
+
+        PersonEntity p2 = PersonEntity.builder()
+            .name("Bob")
+            .externalId(666666666L)
+            .dateOfBirth(LocalDate.of(1993, 8, 20))
+            .build();
+
+        p1 = personDao.save(p1);
+        p2 = personDao.save(p2);
+
+        p1.addRelationship(p2, RelationshipType.PARTNER, RelationshipType.PARTNER);
+        p1 = personDao.save(p1);
+        p2 = personDao.save(p2);
+
+        // Manually remove inverse relationship from p2 because hibernate doesn't do so automatically
+        // even if you have the right annotations.
+        PersonEntity finalP = p1;
+        p2.getRelationships().removeIf(r -> r.getRelatedPerson().getInternalId().equals(finalP.getInternalId()));
+        personDao.save(p2); // Persist the cleaned-up p2
+
+        Long id = p1.getInternalId();
+        personDao.delete(p1);
+
+        assertThat(personDao.findById(id)).isNotPresent();
+
+        // Verify p2 still exists and has no relationships
+        Optional<PersonEntity> found = personDao.findById(p2.getInternalId());
+        assertThat(found).isPresent();
+        assertThat(found.get().getRelationships()).isEmpty();
+    }
 
 
-            // Add relationships *to the mainPerson*
-            mainPerson.addRelationship(child, RelationshipType.PARENT, RelationshipType.CHILD);
-            mainPerson.addRelationship(partner, RelationshipType.PARTNER, RelationshipType.PARTNER);
+    @Test
+    @DisplayName("Test that a relationship can be successfully added to a PersonEntity")
+    void testAddRelationship() {
+        PersonEntity p1 = PersonEntity.builder()
+            .name("Alice")
+            .externalId(555555555L)
+            .dateOfBirth(LocalDate.of(1995, 6, 10))
+            .build();
 
-            // Save mainPerson and flush to persist relationships
-            mainPerson = personRepository.saveAndFlush(mainPerson);
-            personRepository.saveAndFlush(child);
-            personRepository.saveAndFlush(partner);
+        PersonEntity p2 = PersonEntity.builder()
+            .name("Bob")
+            .externalId(666666666L)
+            .dateOfBirth(LocalDate.of(1993, 8, 20))
+            .build();
 
-            // Save relationships explicitly
-            personRelationshipRepository.saveAllAndFlush(mainPerson.getRelationships());
+        p1 = personDao.save(p1);
+        p2 = personDao.save(p2);
 
-            Optional<PersonDto> result = personDao.findPersonFromExternalIdWithPartnerChildren(mainPerson.getExternalId());
+        // Add relationship p1 -> p2
+        p1.addRelationship(p2, RelationshipType.PARTNER, RelationshipType.PARTNER);
+        personDao.save(p1);
+        p2 = personDao.save(p2);
 
-            assertThat(result).isPresent();
-            assertThat(result.get().getName()).isEqualTo(mainPerson.getName());
+        PersonRelationshipId relId = new PersonRelationshipId(p1.getInternalId(), p2.getInternalId());
+        Optional<PersonRelationshipEntity> relOpt = relationshipDao.findById(relId);
 
-            log.debug("Asserting: " + result);
-            // Validate relationships count and type
-            assertThat(result.get().getRelations()).hasSize(2);
-            assertThat(result.get().getRelations(RelationshipType.PARENT)).hasSize(1);
-            assertThat(result.get().getRelations(RelationshipType.PARTNER)).hasSize(1);
-        }
+        assertThat(relOpt).isPresent();
+        PersonRelationshipEntity rel = relOpt.get();
+        assertThat(rel.getPerson().getInternalId()).isEqualTo(p1.getInternalId());
+        assertThat(rel.getRelatedPerson().getInternalId()).isEqualTo(p2.getInternalId());
+        assertThat(rel.getRelationshipType()).isEqualTo(RelationshipType.PARTNER);
+    }
 
+    @Test
+    @DisplayName("Test that the relationship between Persons can be successfully deleted.")
+    void testDeleteRelationship() {
+        PersonEntity p1 = PersonEntity.builder()
+            .name("Charlie")
+            .externalId(777777777L)
+            .dateOfBirth(LocalDate.of(1980, 3, 3))
+            .build();
+
+        PersonEntity p2 = PersonEntity.builder()
+            .name("Diana")
+            .externalId(888888888L)
+            .dateOfBirth(LocalDate.of(1982, 7, 7))
+            .build();
+
+        p1 = personDao.save(p1);
+        p2 = personDao.save(p2);
+
+        p1.addRelationship(p2, RelationshipType.PARENT, RelationshipType.CHILD);
+        personDao.save(p1);
+
+        PersonRelationshipId relId = new PersonRelationshipId(p1.getInternalId(), p2.getInternalId());
+
+        // Remove the relationship
+        relationshipDao.deleteById(relId);
+
+        assertThat(relationshipDao.findById(relId)).isNotPresent();
+    }
+
+    @Test
+    @DisplayName("Should return matching person by name, surname and dob")
+    void findAllByNameAndDateOfBirth_returnsMatch() {
+        // given
+        PersonEntity person = PersonEntity.builder()
+            .name("John")
+            .externalId(111222333L)
+            .dateOfBirth(LocalDate.of(1990, 1, 1))
+            .build();
+        personDao.save(person);
+
+        Set<PersonEntity> result = personDao.findAllByNameAndDateOfBirth("John", LocalDate.of(1990, 1, 1));
+
+        assertThat(result).hasSize(1);
+        assertThat(result.stream().findFirst().orElseThrow().getExternalId()).isEqualTo(111222333L);
+    }
+
+    @Test
+    @DisplayName("Should return empty when name or surname does not match")
+    void findAllByNameAndDateOfBirth_returnsEmptyIfMismatch() {
+        // given
+        PersonEntity person = PersonEntity.builder()
+            .name("Alice")
+            .externalId(555555555L)
+            .dateOfBirth(LocalDate.of(1985, 5, 5))
+            .build();
+        personDao.save(person);
+
+        Set<PersonEntity> result =
+            personDao.findAllByNameAndDateOfBirth(
+                "Wrong",
+                LocalDate.of(1985, 5, 5)
+            );
+
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Should return multiple people with same name, surname, and dob")
+    void findAllByNameAndDateOfBirth_returnsMultiple() {
+        // given
+        personDao.save(PersonEntity.builder()
+            .name("Emma")
+            .externalId(888111999L)
+            .dateOfBirth(LocalDate.of(2000, 3, 10))
+            .build());
+
+        personDao.save(PersonEntity.builder()
+            .name("Emma")
+            .externalId(888111998L)
+            .dateOfBirth(LocalDate.of(2000, 3, 10))
+            .build());
+
+        Set<PersonEntity> result =
+            personDao.findAllByNameAndDateOfBirth(
+                "Emma",
+                LocalDate.of(2000, 3, 10)
+            );
+
+        // then
+        assertThat(result).hasSize(2);
+        assertThat(result).extracting(PersonEntity::getExternalId)
+            .containsExactlyInAnyOrder(888111999L, 888111998L);
     }
 
     @Nested
-    class UpdatePersonTests {
+    class UpdatePerson {
 
         @Test
-        void testUpdatePersonRelationships() {
-            PersonEntity oldParent = PersonEntity.builder().externalId(10L).name("Anna").build();
-            PersonEntity oldPartner = PersonEntity.builder().externalId(11L).name("Tom").build();
-            PersonEntity child = PersonEntity.builder().externalId(12L).name("Sally").build();
+        @DisplayName("Should create person with parents, partners and children relationships")
+        @Transactional
+        void shouldCreatePersonWithRelationships() {
+            // Given
+            Long mainId = 100L;
+            Long parentId = 200L;
+            Long childId = 300L;
+            Long partnerId = 400L;
 
-            personRepository.saveAll(List.of(oldParent, oldPartner, child));
-            entityManager.flush();
-            entityManager.clear();
-
-            PersonDto updated = personDao.updatePerson(
-                99L,
-                "New Person",
-                LocalDate.of(1995, 6, 15),
-                Set.of(10L),   // parents
-                Set.of(11L),   // partners
-                Set.of(12L)    // children
+            PersonDto result = personDao.updatePerson(
+                mainId,
+                "John Doe",
+                LocalDate.of(1990, 1, 1),
+                Map.of(
+                    RelationshipType.CHILD, Set.of(parentId),
+                    RelationshipType.PARTNER, Set.of(partnerId),
+                    RelationshipType.PARENT, Set.of(childId)
+                )
             );
 
-            assertThat(updated).isNotNull();
-            assertThat(updated.getName()).isEqualTo("New Person");
-            assertThat(updated.getRelations(RelationshipType.PARENT)).hasSize(1);
-            assertThat(updated.getRelations(RelationshipType.CHILD)).hasSize(1);
-            assertThat(updated.getRelations(RelationshipType.PARTNER)).hasSize(1);
+            assertThat(result).isNotNull();
+            assertThat(result.getExternalId()).isEqualTo(mainId);
+            assertThat(result.getRelations(RelationshipType.CHILD)).hasSize(1);
+            assertThat(result.getRelations(RelationshipType.PARTNER)).hasSize(1);
+            assertThat(result.getRelations(RelationshipType.PARENT)).hasSize(1);
+
+            assertThat(result.getRelations(RelationshipType.CHILD).iterator().next().getExternalId())
+                .isEqualTo(parentId);
+            assertThat(result.getRelations(RelationshipType.PARENT).iterator().next().getExternalId())
+                .isEqualTo(childId);
         }
 
         @Test
-        void testUpdateWithOnlyChildren() {
-            PersonEntity child1 = PersonEntity.builder().externalId(5L).name("Child1").build();
-            PersonEntity child2 = PersonEntity.builder().externalId(6L).name("Child2").build();
+        @DisplayName("Should update name and birthDate")
+        @Transactional
+        void shouldUpdatePersonNameAndDob() {
+            // Create person first
+            Long externalId = 555L;
+            personDao.updatePerson(
+                externalId,
+                "Initial", LocalDate.of(2000, 1, 1), Map.of());
 
-            personRepository.saveAll(List.of(child1, child2));
-            entityManager.flush();
-            entityManager.clear();
-
+            // Update it
             PersonDto updated = personDao.updatePerson(
-                101L,
-                "ParentOnly",
-                LocalDate.of(1988, 3, 3),
-                Set.of(),
-                Set.of(),
-                Set.of(5L, 6L)
-            );
+                externalId,
+                "Updated Name", LocalDate.of(1995, 5, 5), Map.of());
 
             assertThat(updated).isNotNull();
-            assertThat(updated.getName()).isEqualTo("ParentOnly");
-            assertThat(updated.getRelations(RelationshipType.CHILD)).hasSize(2);
-            assertThat(updated.getRelations(RelationshipType.PARENT)).isNullOrEmpty();
-            assertThat(updated.getRelations(RelationshipType.PARTNER)).isNullOrEmpty();
+            assertThat(updated.getName()).isEqualTo("Updated Name");
+            assertThat(updated.getDateOfBirth()).isEqualTo(LocalDate.of(1995, 5, 5));
         }
 
-        @Test
-        void testUpdateWithOnlyParents() {
-            PersonEntity parent1 = PersonEntity.builder().externalId(20L).name("Parent1").build();
-            PersonEntity parent2 = PersonEntity.builder().externalId(21L).name("Parent2").build();
 
-            personRepository.saveAll(List.of(parent1, parent2));
-            entityManager.flush();
-            entityManager.clear();
-
-            PersonDto updated = personDao.updatePerson(
-                102L,
-                "ChildOnly",
-                LocalDate.of(2000, 1, 1),
-                Set.of(20L, 21L),
-                Set.of(),
-                Set.of()
-            );
-
-            assertThat(updated).isNotNull();
-            assertThat(updated.getName()).isEqualTo("ChildOnly");
-            assertThat(updated.getRelations(RelationshipType.PARENT)).hasSize(2);
-            assertThat(updated.getRelations(RelationshipType.CHILD)).isNullOrEmpty();
-            assertThat(updated.getRelations(RelationshipType.PARTNER)).isNullOrEmpty();
-        }
-
-        @Test
-        void testUpdateWithNoRelationships() {
-            PersonDto updated = personDao.updatePerson(
-                103L,
-                "Lonely Person",
-                LocalDate.of(1990, 7, 7),
-                Set.of(),
-                Set.of(),
-                Set.of()
-            );
-
-            assertThat(updated).isNotNull();
-            assertThat(updated.getName()).isEqualTo("Lonely Person");
-            assertThat(updated.getRelations(RelationshipType.PARENT)).isNullOrEmpty();
-            assertThat(updated.getRelations(RelationshipType.CHILD)).isNullOrEmpty();
-            assertThat(updated.getRelations(RelationshipType.PARTNER)).isNullOrEmpty();
-        }
     }
 }

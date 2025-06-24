@@ -5,6 +5,8 @@ import com.pink.family.assignment.database.entity.PersonEntity;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -24,12 +26,16 @@ public interface PersonRepository extends JpaRepository<PersonEntity, Long> {
 
     @EntityGraph(attributePaths = {"relationships"}) // set which items should be fetched eagerly.
     @Cacheable(cacheNames = CacheConfig.Constant.PERSON_BY_EXTERNAL_ID)
-    Optional<PersonEntity> findByExternalId(Long externalId);
+    Set<PersonEntity> findByExternalId(Long externalId);
 
     @EntityGraph(attributePaths = {"relationships"})
     @Cacheable(value = CacheConfig.Constant.PERSONS_BY_NAME_DOB, key = "#name + '_' + #dob")
     Set<PersonEntity> findAllByNameAndDateOfBirth(String name, LocalDate dob);
 
     Set<PersonEntity> findByExternalIdIn(Set<Long> externalIds);
+
+    @Query("SELECT DISTINCT p FROM PersonEntity p LEFT JOIN FETCH p.relationships r LEFT JOIN FETCH r.relatedPerson WHERE p.externalId IN :ids")
+    List<PersonEntity> findAllWithRelationshipsByIds(@Param("ids") List<Long> ids);
+
 
 }

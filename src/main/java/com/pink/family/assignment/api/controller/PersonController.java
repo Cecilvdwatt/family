@@ -6,23 +6,24 @@ import com.pink.family.api.rest.server.model.Relation;
 import com.pink.family.api.rest.server.model.SpecificPersonCheckRequest;
 import com.pink.family.api.rest.server.reference.V1Api;
 import com.pink.family.assignment.api.exception.PinkApiException;
+import com.pink.family.assignment.api.mapper.PersonApiMapper;
+import com.pink.family.assignment.dto.PersonDto;
 import com.pink.family.assignment.service.LoggingService;
 import com.pink.family.assignment.service.PersonService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.CollectionUtils;
 import org.springframework.util.ObjectUtils;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-/**
- * The controller for the Persons API methods i.e. /persons/**
- */
 @Slf4j
 @RestController
 @RequiredArgsConstructor
@@ -34,56 +35,60 @@ public class PersonController implements V1Api {
     @Override
     public ResponseEntity<Void> v1PeopleCheckExistingPersonPost(SpecificPersonCheckRequest specificPersonCheckRequest) {
 
+        log.debug("""
+            #############################################
+            ######## v1PeopleCheckExistingPersonPost
+            #############################################
+            """);
         loggingService.setRequestId(specificPersonCheckRequest.getRequestId());
 
-        String result = "";
-        // we have a external id to try and use
-        if(!ObjectUtils.isEmpty(specificPersonCheckRequest.getId())) {
-            result = personService.hasPartnerAndChildrenExternalId(specificPersonCheckRequest.getId());
-        } else if(ObjectUtils.isEmpty(specificPersonCheckRequest.getName()) && ObjectUtils.isEmpty(specificPersonCheckRequest.getDateOfBirth())) {
-            throw new PinkApiException("Request is missing ID, Name and Date of Birth", 444);
-        }
+        Optional<String> result = Optional.empty();
 
-        // We were unable to find a matching record using the External ID try the
-        // name and dob next.
-        if(result.equals(PersonService.Constants.ErrorMsg.NO_RECORD)) {
+        if (!ObjectUtils.isEmpty(specificPersonCheckRequest.getId())) {
+            result = personService.hasPartnerAndChildrenExternalId(specificPersonCheckRequest.getId());
+            log.debug("Result From ID: {}", result.map(String::valueOf).orElse("N/A"));
+        } else if (ObjectUtils.isEmpty(specificPersonCheckRequest.getName()) || ObjectUtils.isEmpty(specificPersonCheckRequest.getDateOfBirth())) {
+            throw new PinkApiException("Request is missing ID, Name or Date of Birth", 444);
+        } else {
+            log.debug("No ID, but fallback information available.");
             result = personService.hasPartnerAndChildrenNameSurnameDob(
                 specificPersonCheckRequest.getName(),
                 specificPersonCheckRequest.getDateOfBirth()
             );
         }
 
-        // No issues encountered.
-        if(ObjectUtils.isEmpty(result)) {
-            return new ResponseEntity<>(HttpStatus.OK);
+        if (result.isEmpty() || result.get().isEmpty()) {
+            return ResponseEntity.ok().build();
         } else {
-            // 444 isn't a standard http response code.
-            throw new PinkApiException(result, 444);
+            throw new PinkApiException(result.get(), 444);
         }
-
     }
 
     @Override
     public ResponseEntity<FullPerson> v1PeoplePost(PersonDetailsRequest personDetailsRequest) {
-
-        personService.retrieveAndUpdate(
-            personDetailsRequest.getId(),
-            personDetailsRequest.getName(),
-            personDetailsRequest.getBirthDate(),
-            Stream
-                .of(
-                    personDetailsRequest.getParent1(),
-                    personDetailsRequest.getParent2())
-                .filter(Objects::nonNull)
-                .map(Relation::getId)
-                .collect(Collectors.toSet()),
-            Stream
-                .of(personDetailsRequest.getPartner())
-                .filter(Objects::nonNull)
-                .map(Relation::getId)
-                .collect(Collectors.toSet()),
-            personDetailsRequest.getChildren().stream().map(Relation::getId).collect(Collectors.toSet())
+        PersonDto updated =
+            personService.retrieveAndUpdate(
+                personDetailsRequest.getId(),
+                personDetailsRequest.getName(),
+                personDetailsRequest.getBirthDate(),
+                Stream
+                    .of(
+                        personDetailsRequest.getParent1(),
+                        personDetailsRequest.getParent2())
+                    .filter(Objects::nonNull)
+                    .map(Relation::getId)
+                    .collect(Collectors.toSet()),
+                Stream
+                    .of(personDetailsRequest.getPartner())
+                    .filter(Objects::nonNull)
+                    .map(Relation::getId)
+                    .collect(Collectors.toSet()),
+                CollectionUtils.isEmpty(personDetailsRequest.getChildren())
+                ?
+                    Set.of()
+                    : personDetailsRequest.getChildren().stream().map(Relation::getId).collect(Collectors.toSet())
             );
-        return null;
+
+        return ResponseEntity.ok(PersonApiMapper.mapToApi(updated, personDetailsRequest));
     }
 }

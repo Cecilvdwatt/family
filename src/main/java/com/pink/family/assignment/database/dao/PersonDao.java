@@ -1,19 +1,22 @@
 package com.pink.family.assignment.database.dao;
 
+import com.pink.family.assignment.api.exception.PinkSystemException;
 import com.pink.family.assignment.database.entity.PersonEntity;
+import com.pink.family.assignment.database.entity.PersonRelationshipEntity;
 import com.pink.family.assignment.database.entity.enums.RelationshipType;
 import com.pink.family.assignment.database.mapper.PersonDbMapper;
-import com.pink.family.assignment.database.repository.PersonRelationshipRepository;
 import com.pink.family.assignment.database.repository.PersonRepository;
 import com.pink.family.assignment.dto.PersonDto;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.PersistenceContext;
+import com.pink.family.assignment.service.PersonService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.CollectionUtils;
 import org.springframework.util.ObjectUtils;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -24,19 +27,19 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-
 /**
  * The data access object for a PersonEntity entity.
  * This object returns detached {@link PersonDto} objects in order to ensure that we do not expose
  * attached objects outside and potentially run into issues such as no transaction or accidentally
  * make modifications to the underlying data.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class PersonDao {
 
     private final PersonRepository personRepository;
-    private final PersonRelationshipRepository personRelationshipRepository;
+    private final PersonRelationshipDao personRelationshipDao;
 
     /**
      * Attempt to find a PersonEntity record in the database and any associated Children and Partners using an external
@@ -46,23 +49,19 @@ public class PersonDao {
      * their children and partners.
      */
     @Transactional(readOnly = true)
-    public Optional<PersonDto> findPersonFromExternalIdWithPartnerChildren(Long externalId) {
-        // Fetch person eagerly with relationships to avoid lazy loading
-        Optional<PersonEntity> personEntityOpt = personRepository.findByExternalId(externalId);
-        if (personEntityOpt.isEmpty()) {
-            return Optional.empty();
-        }
-
-        PersonEntity rootPerson = personEntityOpt.get();
-
-        // Filter to include PARTNER and CHILD relationships (i.e. the root's partners and children)
-        Set<RelationshipType> filter = Set.of(RelationshipType.PARTNER, RelationshipType.PARENT);
-
-        // Map the entity graph to DTO recursively using the filter
-        PersonDto dto = PersonDbMapper.mapDto(rootPerson, filter);
-
-        return Optional.of(dto);
+    public Set<PersonDto> findPersonFromExternalId(Long externalId, int relationshipDepth) {
+        return personRepository
+            .findByExternalId(externalId)
+            .stream()
+            .map(personEntity -> {
+                log.debug("\nLoaded person entity (with relationships, depth={}):\n{}", relationshipDepth, personEntity.prettyPrint());
+                PersonDto dto = PersonDbMapper.mapDto(personEntity, relationshipDepth);
+                log.debug("\nMapped person DTO (with relationships, depth={}):\n{}", relationshipDepth, dto.prettyPersonDtoString());
+                return dto;
+            })
+            .collect(Collectors.toSet());
     }
+
 
     /**
      * Attempt to find a PersonEntity record in the database and any associated Children and Partners using a name,
@@ -74,20 +73,12 @@ public class PersonDao {
     public Set<PersonDto> findAllPersonFromNameDobWithPartnerChildren(
         String name,
         LocalDate dob
-    )
-    {
-        return
-            personRepository
-                .findAllByNameAndDateOfBirth(name, dob)
-                .stream()
-                .map(
-                    person ->
-                        PersonDbMapper.mapDto(
-                            person,
-                            Set.of(RelationshipType.PARTNER, RelationshipType.CHILD)
-                        )
-                )
-                .collect(Collectors.toSet());
+    ) {
+        return personRepository
+            .findAllByNameAndDateOfBirth(name, dob)
+            .stream()
+            .map(e -> PersonDbMapper.mapDto(e, 2))
+            .collect(Collectors.toSet());
     }
 
     @Transactional
@@ -95,33 +86,48 @@ public class PersonDao {
         Long externalId,
         String name,
         LocalDate dateOfBirth,
-        Set<Long> parentsId,
-        Set<Long> partnerIds,
-        Set<Long> childrenIds)
-    {
+        Map<RelationshipType, Set<Long>> relatedIdsByType
+    ) {
+        Set<PersonEntity> mainEntitySet = personRepository.findByExternalId(externalId);
 
-        // Find main entity or create new with externalId
-        PersonEntity mainEntity = personRepository.findByExternalId(externalId)
-            .orElse(PersonEntity.builder().externalId(externalId).build());
+        log.debug("Found Person(s) {}", mainEntitySet);
 
-        // Collect all related IDs
-        Set<Long> allIds = Stream.of(
-                parentsId.stream(),
-                partnerIds.stream(),
-                childrenIds.stream()
-            )
-            .flatMap(Function.identity())
+        PersonEntity mainEntity = null;
+
+        if (CollectionUtils.isEmpty(mainEntitySet)) {
+            log.debug("Found empty person. Constructing new one");
+            mainEntity = PersonEntity.builder().externalId(externalId).build();
+        } else if (mainEntitySet.size() == 1) {
+            mainEntity = mainEntitySet.iterator().next();
+        } else {
+            throw new PinkSystemException(PersonService.Constants.ErrorMsg.NO_DISTINCT_RECORD);
+        }
+
+        log.debug("Using {}", mainEntity);
+        log.debug("Using Relationships: {}", relatedIdsByType);
+
+        // Collect all related IDs from the map
+        Set<Long> allIds = relatedIdsByType.values().stream()
+            .flatMap(Set::stream)
             .collect(Collectors.toSet());
+
+        log.debug("All IDs: {}", allIds);
 
         // Fetch all related persons from DB
         Set<PersonEntity> foundPersons = personRepository.findByExternalIdIn(allIds);
 
+        log.debug("Found Person(s):\n {}", foundPersons);
+
         // Add missing related persons as new entities (not saved yet)
         Set<PersonEntity> allPersons = new HashSet<>(foundPersons);
         for (Long id : allIds) {
-            boolean exists = allPersons.stream()
+
+            boolean exists
+                = allPersons.stream()
                 .anyMatch(p -> Objects.equals(p.getExternalId(), id));
+
             if (!exists) {
+                log.debug("Did Not Find Person with id {}. Will add.", id);
                 allPersons.add(PersonEntity.builder().externalId(id).build());
             }
         }
@@ -131,63 +137,189 @@ public class PersonDao {
 
         // Save all persons, get managed entities back
         List<PersonEntity> savedPersons = personRepository.saveAll(allPersons);
-        Map<Long, PersonEntity> personById = savedPersons.stream()
-            .collect(Collectors.toMap(PersonEntity::getExternalId, Function.identity()));
+        Map<Long, PersonEntity> personById
+            = savedPersons
+                .stream()
+                .collect(Collectors.toMap(PersonEntity::getExternalId, Function.identity()));
 
         // Update mainEntity reference with managed entity
         mainEntity = personById.get(externalId);
 
         // Update mainEntity's name and DOB if provided
         if (!ObjectUtils.isEmpty(name)) {
+            log.debug("Updated Person with name {}", name);
             mainEntity.setName(name);
+        } else {
+            log.debug("Not Updating name");
         }
         if (dateOfBirth != null) {
+            log.debug("Updated Person with dateOfBirth {}", dateOfBirth);
             mainEntity.setDateOfBirth(dateOfBirth);
+        } else {
+            log.debug("Not Updating dateOfBirth");
         }
 
-        // Clear existing relationships to avoid duplicates (optional, depends on your logic)
-        mainEntity.getRelationships().clear();
+        // Add relationships using managed entities only, for all relationship types dynamically
+        for (Map.Entry<RelationshipType, Set<Long>> entry : relatedIdsByType.entrySet()) {
 
-        // Add relationships using managed entities only
-        for (Long id : allIds) {
-            PersonEntity related = personById.get(id);
-            if (related == null) {
+            RelationshipType relType = entry.getKey();
+            Set<Long> ids = entry.getValue();
+
+            log.debug("Processing Relations {} with {}", relType, ids);
+
+            if (ids == null) {
                 continue;
             }
 
-            if (parentsId.contains(id)) {
-                mainEntity.addRelationship(related, RelationshipType.CHILD, RelationshipType.PARENT);
-            } else if (partnerIds.contains(id)) {
-                mainEntity.addRelationship(related, RelationshipType.PARTNER, RelationshipType.PARTNER);
-            } else if (childrenIds.contains(id)) {
-                mainEntity.addRelationship(related, RelationshipType.PARENT, RelationshipType.CHILD);
+            for (Long id : ids) {
+                PersonEntity related = personById.get(id);
+                if (related == null) {
+                    continue;
+                };
+
+                // Add relationship with proper inverse
+                mainEntity.addRelationship(related, relType, relType.getInverse());
             }
         }
 
         // Save relationships (managed entities only)
-        personRelationshipRepository.saveAll(mainEntity.getRelationships());
+        personRelationshipDao.saveAll(mainEntity.getRelationships());
 
         // Map to DTO without relationships first
         PersonDto mainDto = PersonDbMapper.mapDtoNoRel(mainEntity);
 
-        // Add relationship DTOs to main DTO
-        Map<RelationshipType, Set<Long>> relationshipsToAdd
-            = Map.of(
-                RelationshipType.PARTNER, partnerIds,
-                RelationshipType.PARENT, childrenIds,
-                RelationshipType.CHILD, parentsId
-        );
+        // Add relationship DTOs to main DTO dynamically, using inverse relationship
+        relatedIdsByType.forEach((relType, ids) -> {
+            if (ids == null) return;
 
-        relationshipsToAdd.forEach((relType, ids) -> {
             ids.stream()
                 .map(personById::get)
                 .filter(Objects::nonNull)
                 .map(PersonDbMapper::mapDtoNoRel)
-                .forEach(dto -> mainDto.addRelationship(relType.getInverse(), relType, dto));
+                .forEach(dto -> mainDto.addRelationship(relType, relType.getInverse(), dto));
         });
+
+
+        log.debug("Updated Entity {}", mainEntity.prettyPrint());
 
         return mainDto;
     }
 
 
+    @Transactional
+    public void deleteAll() {
+        log.info("Deleting all PersonEntity records");
+        personRepository.deleteAll();
+        log.debug("All PersonEntity records deleted");
+    }
+
+    @Transactional
+    public PersonEntity save(PersonEntity main) {
+        log.info("Saving PersonEntity with externalId={}", main.getExternalId());
+
+        // Check for invalid relationships
+        List<PersonRelationshipEntity> invalidRels = main.getRelationships().stream()
+            .filter(rel -> rel.getPerson() == null || rel.getPerson().getInternalId() == null
+                || rel.getRelatedPerson() == null || rel.getRelatedPerson().getInternalId() == null)
+            .toList();
+
+        if (!invalidRels.isEmpty()) {
+            String errMsg = String.format(
+                "Found %d invalid relationships without proper internal IDs: %s",
+                invalidRels.size(),
+                invalidRels.stream().map(Object::toString).collect(Collectors.joining(", "))
+            );
+            log.error(errMsg);
+            throw new PinkSystemException(errMsg);
+        }
+
+        // All relationships valid — save them first
+        personRelationshipDao.saveAll(main.getRelationships());
+        log.info("Saved {} relationships", main.getRelationships().size());
+
+        PersonEntity saved = personRepository.save(main);
+        log.info("Saved PersonEntity: internalId={}, externalId={}", saved.getInternalId(), saved.getExternalId());
+        log.debug("Saved PersonEntity:\n{}", saved.prettyPrint());
+
+        return saved;
+    }
+
+    @Transactional
+    public PersonEntity saveAndFlush(PersonEntity toSaveAndFlush) {
+        log.info("Saving and flushing Person {}", this);
+        PersonEntity saved = save(toSaveAndFlush);
+        personRepository.flush();
+        log.debug("Saved and flushed Person");
+        return saved;
+    }
+
+    @Transactional
+    public void flush() {
+        log.info("Flushing Person {}", this);
+        personRepository.flush();
+        log.debug("Flushed Person");
+    }
+
+    @Transactional
+    public List<PersonEntity> saveAll(List<PersonEntity> persons) {
+        log.info("Saving batch of {} PersonEntity records", persons.size());
+
+        // Collect all invalid relationships across all persons
+        List<PersonRelationshipEntity> invalidRels = persons.stream()
+            .flatMap(p -> p.getRelationships().stream())
+            .filter(rel -> rel.getPerson() == null || rel.getPerson().getInternalId() == null
+                || rel.getRelatedPerson() == null || rel.getRelatedPerson().getInternalId() == null)
+            .toList();
+
+        if (!invalidRels.isEmpty()) {
+            String errMsg = String.format(
+                "Found %d invalid relationships without proper internal IDs in batch: %s",
+                invalidRels.size(),
+                invalidRels.stream().map(Object::toString).collect(Collectors.joining(", "))
+            );
+            log.error(errMsg);
+            throw new IllegalStateException(errMsg);
+        }
+
+        // Save all relationships first
+        Set<PersonRelationshipEntity> allRelationships = persons.stream()
+            .flatMap(p -> p.getRelationships().stream())
+            .collect(Collectors.toSet());
+
+        personRelationshipDao.saveAll(allRelationships);
+        log.info("Saved {} relationships", allRelationships.size());
+
+        // Save all persons
+        List<PersonEntity> savedPersons = personRepository.saveAll(persons);
+        log.info("Saved {} PersonEntity records", savedPersons.size());
+
+        return savedPersons;
+    }
+
+    @Transactional
+    public Set<PersonEntity> findAllByNameAndDateOfBirth(String name, LocalDate dob) {
+        return personRepository.findAllByNameAndDateOfBirth(name, dob);
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<PersonEntity> findById(Long internalId) {
+        log.info("Finding PersonEntity internalId={}", internalId);
+        var toReturn = personRepository.findById(internalId);
+        log.debug("Found PersonEntity: {}", toReturn);
+        return toReturn;
+    }
+
+    @Transactional
+    public void delete(PersonEntity saved) {
+        log.info("Deleting PersonEntity: {}", saved);
+        personRepository.delete(saved);
+        log.debug("Deleted PersonEntity");
+    }
+
+    public Set<PersonEntity> findByExternalId(Long externalId) {
+        log.debug("Finding PersonEntity internalId={}", externalId);
+        var toReturn = personRepository.findByExternalId(externalId);
+        log.debug("Found PersonEntity: {}", toReturn);
+        return toReturn;
+    }
 }
