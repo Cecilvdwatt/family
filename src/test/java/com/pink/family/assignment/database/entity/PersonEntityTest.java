@@ -23,7 +23,6 @@ class PersonEntityTest {
         assertEquals(p1, rel.getPerson());
         assertEquals(p2, rel.getRelatedPerson());
         assertEquals(RelationshipType.PARENT, rel.getRelationshipType());
-        assertEquals(RelationshipType.CHILD, rel.getInversRelationshipType());
     }
 
     @Test

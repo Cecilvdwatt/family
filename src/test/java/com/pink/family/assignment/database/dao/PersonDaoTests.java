@@ -47,6 +47,7 @@ public class PersonDaoTests {
 
     @Test
     void testUpdatePerson() {
+
         PersonEntity person = PersonEntity.builder()
             .name("Jane")
             .externalId(987654321L)
@@ -143,14 +144,14 @@ public class PersonDaoTests {
         personDao.save(p1);
         p2 = personDao.save(p2);
 
-        PersonRelationshipId relId = new PersonRelationshipId(p1.getInternalId(), p2.getInternalId());
+        PersonRelationshipId relId = new PersonRelationshipId(p1.getInternalId(), p2.getInternalId(), RelationshipType.PARTNER);
         Optional<PersonRelationshipEntity> relOpt = relationshipDao.findById(relId);
 
         assertThat(relOpt).isPresent();
         PersonRelationshipEntity rel = relOpt.get();
         assertThat(rel.getPerson().getInternalId()).isEqualTo(p1.getInternalId());
         assertThat(rel.getRelatedPerson().getInternalId()).isEqualTo(p2.getInternalId());
-        assertThat(rel.getRelationshipType()).isEqualTo(RelationshipType.PARTNER);
+        assertThat(rel.getId().getRelationshipType()).isEqualTo(RelationshipType.PARTNER);
     }
 
     @Test
@@ -174,7 +175,7 @@ public class PersonDaoTests {
         p1.addRelationship(p2, RelationshipType.PARENT, RelationshipType.CHILD);
         personDao.save(p1);
 
-        PersonRelationshipId relId = new PersonRelationshipId(p1.getInternalId(), p2.getInternalId());
+        PersonRelationshipId relId = new PersonRelationshipId(p1.getInternalId(), p2.getInternalId(), RelationshipType.PARENT);
 
         // Remove the relationship
         relationshipDao.deleteById(relId);
@@ -255,10 +256,10 @@ public class PersonDaoTests {
         @Transactional
         void shouldCreatePersonWithRelationships() {
             // Given
-            Long mainId = 100L;
-            Long parentId = 200L;
-            Long childId = 300L;
-            Long partnerId = 400L;
+            Long mainId = 100L+ System.nanoTime() % 100000;
+            Long parentId = 200L+ System.nanoTime() % 100000;
+            Long childId = 300L+ System.nanoTime() % 100000;
+            Long partnerId = 400L+ System.nanoTime() % 100000;
 
             PersonDto result = personDao.updatePerson(
                 mainId,
@@ -284,11 +285,48 @@ public class PersonDaoTests {
         }
 
         @Test
+        public void testUpdatePerson_WithOneChild_ShouldCreateChildRelationship() {
+            // Given: create and save the child person
+            PersonEntity child = new PersonEntity();
+            child.setExternalId(201L);
+            child.setName("Child Person");
+            child.setDateOfBirth(LocalDate.of(2012, 3, 15));
+            personDao.save(child);
+
+            // When: call updatePerson with 1 child relationship
+            Long parentExternalId = 200L+ System.nanoTime() % 100000;
+            Map<RelationshipType, Set<Long>> relatedIdsByType = Map.of(
+                RelationshipType.CHILD, Set.of(201L+ System.nanoTime() % 100000)
+            );
+
+            PersonDto result = personDao.updatePerson(
+                parentExternalId,
+                "Parent Person",
+                LocalDate.of(1980, 5, 5),
+                relatedIdsByType
+            );
+
+            // Then: fetch parent and assert relationships
+            PersonEntity parent = personDao.findByExternalIdEntity(parentExternalId).get();
+
+            assertThat("Parent Person").isEqualTo(parent.getName());
+            assertThat(LocalDate.of(1980, 5, 5)).isEqualTo(parent.getDateOfBirth());
+
+            // Validate the relationship
+            Set<PersonRelationshipEntity> relationships = parent.getRelationships();
+            assertThat(relationships).hasSize(1);
+
+            PersonRelationshipEntity rel = relationships.iterator().next();
+            assertThat(RelationshipType.CHILD).isEqualTo(rel.getRelationshipType());
+            assertThat(child.getInternalId()).isEqualTo(rel.getRelatedPerson().getInternalId());
+        }
+
+        @Test
         @DisplayName("Should update name and birthDate")
         @Transactional
         void shouldUpdatePersonNameAndDob() {
             // Create person first
-            Long externalId = 555L;
+            Long externalId = 555L+ System.nanoTime() % 100000;
             personDao.updatePerson(
                 externalId,
                 "Initial", LocalDate.of(2000, 1, 1), Map.of());

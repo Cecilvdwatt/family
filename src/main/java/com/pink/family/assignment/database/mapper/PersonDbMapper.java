@@ -62,12 +62,11 @@ public class PersonDbMapper {
         if (personEntity.getRelationships() != null) {
             for (var rel : personEntity.getRelationships()) {
                 RelationshipType type = rel.getRelationshipType();
-                RelationshipType inverseType = rel.getInversRelationshipType();
                 PersonEntity relatedPerson = rel.getRelatedPerson();
 
                 if (relatedPerson != null) {
                     PersonDto relatedDto = mapDto(relatedPerson, maxDepth, currentDepth + 1, mappedDtos);
-                    dto.addRelationship(type, inverseType, relatedDto);
+                    dto.addRelationship(type, relatedDto);
                 }
             }
         }
@@ -86,6 +85,7 @@ public class PersonDbMapper {
             .externalId(person.getExternalId())
             .name(person.getName())
             .dateOfBirth(person.getDateOfBirth())
+            .deleted(person.isDeleted())
             .build();
     }
 }

@@ -12,12 +12,13 @@ import com.pink.family.assignment.service.LoggingService;
 import com.pink.family.assignment.service.PersonService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.ObjectUtils;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.HashSet;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -42,7 +43,7 @@ public class PersonController implements V1Api {
             """);
         loggingService.setRequestId(specificPersonCheckRequest.getRequestId());
 
-        Optional<String> result = Optional.empty();
+        Optional<String> result;
 
         if (!ObjectUtils.isEmpty(specificPersonCheckRequest.getId())) {
             result = personService.hasPartnerAndChildrenExternalId(specificPersonCheckRequest.getId());
@@ -62,6 +63,12 @@ public class PersonController implements V1Api {
         } else {
             throw new PinkApiException(result.get(), 444);
         }
+    }
+
+    @Override
+    public ResponseEntity<Void> v1PeopleDelete(List<Long> requestBody) {
+        personService.softDeletePersons(new HashSet<>(requestBody));
+        return ResponseEntity.noContent().build();
     }
 
     @Override

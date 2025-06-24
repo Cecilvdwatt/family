@@ -11,6 +11,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -40,8 +43,13 @@ public class PersonRelationshipDao {
             throw new IllegalStateException(errMsg);
         }
 
+        List<PersonRelationshipEntity> uniqueRelationships = relationships.stream()
+            .filter(distinctByKey(PersonRelationshipEntity::getId))
+            .collect(Collectors.toList());
+
         // Save all valid relationships
-        List<PersonRelationshipEntity> saved = personRelationshipRepository.saveAll(relationships);
+        List<PersonRelationshipEntity> saved = personRelationshipRepository.saveAll(uniqueRelationships);
+
         log.debug("Saved {} PersonRelationshipEntity records", saved.size());
         return saved;
     }
@@ -72,5 +80,10 @@ public class PersonRelationshipDao {
         var toReturn = personRelationshipRepository.findById(relId);
         log.debug("Found PersonRelationshipEntity record with id {}", relId);
         return toReturn;
+    }
+
+    public static <T> Predicate<T> distinctByKey(Function<? super T, ?> keyExtractor) {
+        Set<Object> seen = ConcurrentHashMap.newKeySet();
+        return t -> seen.add(keyExtractor.apply(t));
     }
 }

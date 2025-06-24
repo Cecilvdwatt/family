@@ -56,13 +56,9 @@ public class PersonRelationshipEntity {
     @ToString.Exclude
     private PersonEntity relatedPerson;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "relationship_type")
-    private RelationshipType relationshipType;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "inverse_relationship_type")
-    private RelationshipType inversRelationshipType;
+    public RelationshipType getRelationshipType() {
+        return getId().getRelationshipType();
+    }
 
     @Override
     public final boolean equals(Object o) {
@@ -77,12 +73,11 @@ public class PersonRelationshipEntity {
         if (thisEffectiveClass != oEffectiveClass) return false;
         PersonRelationshipEntity that = (PersonRelationshipEntity) o;
         return id != null
-            && Objects.equals(id, that.id)
-            && relationshipType == that.relationshipType;
+            && Objects.equals(id, that.id);
     }
 
     @Override
     public final int hashCode() {
-        return Objects.hash(id, relationshipType);
+        return Objects.hash(id);
     }
 }

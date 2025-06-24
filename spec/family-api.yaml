@@ -7,6 +7,30 @@ info:
 
 paths:
   /v1/people:
+    delete:
+      summary: Permanently delete person(s) by external ID
+      description: >
+        Deletes the person(s) with the specified external ID(s).
+        Once deleted, these IDs will be remembered and ignored in all future operations.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: integer
+                format: int64
+              example: [ 101, 102, 103 ]
+      responses:
+        '204':
+          description: Successfully deleted (or already deleted) and remembered.
+        '400':
+          description: Invalid input format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
     post:
       summary: Return the details of all matching entries
       description: >

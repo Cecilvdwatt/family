@@ -62,10 +62,10 @@ public class PersonRepositoryTests {
 
     @Test
     void testFindByExternalId() {
-        Set<PersonEntity> found = personRepository.findByExternalId(1001L);
+        Optional<PersonEntity> found = personRepository.findByExternalId(1001L);
         assertThat(found).isNotEmpty();
 
-        PersonEntity person = found.iterator().next();
+        PersonEntity person = found.get();
         assertThat(person.getName()).isEqualTo("John Doe");
         assertThat(person.getRelationships()).isNotEmpty();
     }
@@ -83,14 +83,5 @@ public class PersonRepositoryTests {
     void testFindByExternalIdIn() {
         Set<PersonEntity> foundSet = personRepository.findByExternalIdIn(Set.of(1001L, 2001L));
         assertThat(foundSet).hasSize(2);
-    }
-
-    @Test
-    void testFindAllWithRelationshipsByIds() {
-        List<PersonEntity> foundList = personRepository.findAllWithRelationshipsByIds(List.of(john.getInternalId(), jane.getInternalId()));
-        assertThat(foundList).hasSize(2);
-
-        // Check that relationships are fetched eagerly
-        foundList.forEach(p -> assertThat(p.getRelationships()).isNotNull());
     }
 }

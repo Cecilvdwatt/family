@@ -26,6 +26,9 @@ public class PersonDto {
     @Getter
     private LocalDate dateOfBirth;
 
+    @Getter
+    private boolean deleted;
+
     private Map<RelationshipType, Set<PersonDto>> relationships;
 
     public Map<RelationshipType, Set<PersonDto>> getRelations() {
@@ -42,12 +45,10 @@ public class PersonDto {
         return getRelations().computeIfAbsent(type, k -> new HashSet<>());
     }
 
-    public void addRelationship(RelationshipType type, RelationshipType inverse, PersonDto relation) {
+    public void addRelationship(RelationshipType type, PersonDto relation) {
         if (type != null) {
             addRelationshipNoInverse(type, relation);
-        }
-        if (inverse != null) {
-            relation.addRelationshipNoInverse(inverse, this);
+            relation.addRelationshipNoInverse(type.getInverse(), this);
         }
     }
 

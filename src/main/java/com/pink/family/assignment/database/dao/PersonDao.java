@@ -16,7 +16,6 @@ import org.springframework.util.CollectionUtils;
 import org.springframework.util.ObjectUtils;
 
 import java.time.LocalDate;
-import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -25,7 +24,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /**
  * The data access object for a PersonEntity entity.
@@ -49,17 +47,15 @@ public class PersonDao {
      * their children and partners.
      */
     @Transactional(readOnly = true)
-    public Set<PersonDto> findPersonFromExternalId(Long externalId, int relationshipDepth) {
+    public Optional<PersonDto> findPersonFromExternalId(Long externalId, int relationshipDepth) {
         return personRepository
             .findByExternalId(externalId)
-            .stream()
             .map(personEntity -> {
                 log.debug("\nLoaded person entity (with relationships, depth={}):\n{}", relationshipDepth, personEntity.prettyPrint());
                 PersonDto dto = PersonDbMapper.mapDto(personEntity, relationshipDepth);
                 log.debug("\nMapped person DTO (with relationships, depth={}):\n{}", relationshipDepth, dto.prettyPersonDtoString());
                 return dto;
-            })
-            .collect(Collectors.toSet());
+            });
     }
 
 
@@ -88,17 +84,23 @@ public class PersonDao {
         LocalDate dateOfBirth,
         Map<RelationshipType, Set<Long>> relatedIdsByType
     ) {
-        Set<PersonEntity> mainEntitySet = personRepository.findByExternalId(externalId);
+
+        Optional<PersonEntity> mainEntitySet = personRepository.findByExternalId(externalId);
 
         log.debug("Found Person(s) {}", mainEntitySet);
 
         PersonEntity mainEntity = null;
 
-        if (CollectionUtils.isEmpty(mainEntitySet)) {
+        if (mainEntitySet.isEmpty()) {
             log.debug("Found empty person. Constructing new one");
             mainEntity = PersonEntity.builder().externalId(externalId).build();
-        } else if (mainEntitySet.size() == 1) {
-            mainEntity = mainEntitySet.iterator().next();
+        } else if (mainEntitySet.isPresent()) {
+            mainEntity = mainEntitySet.get();
+
+            if(mainEntity.isDeleted()) {
+                return  null;
+            }
+
         } else {
             throw new PinkSystemException(PersonService.Constants.ErrorMsg.NO_DISTINCT_RECORD);
         }
@@ -132,19 +134,6 @@ public class PersonDao {
             }
         }
 
-        // Add main entity to all persons for saving
-        allPersons.add(mainEntity);
-
-        // Save all persons, get managed entities back
-        List<PersonEntity> savedPersons = personRepository.saveAll(allPersons);
-        Map<Long, PersonEntity> personById
-            = savedPersons
-                .stream()
-                .collect(Collectors.toMap(PersonEntity::getExternalId, Function.identity()));
-
-        // Update mainEntity reference with managed entity
-        mainEntity = personById.get(externalId);
-
         // Update mainEntity's name and DOB if provided
         if (!ObjectUtils.isEmpty(name)) {
             log.debug("Updated Person with name {}", name);
@@ -158,6 +147,16 @@ public class PersonDao {
         } else {
             log.debug("Not Updating dateOfBirth");
         }
+
+        // Add main entity to all persons for saving
+        allPersons.add(mainEntity);
+
+        // Save all persons, get managed entities back
+        List<PersonEntity> savedPersons = personRepository.saveAll(new HashSet<>(allPersons));
+        Map<Long, PersonEntity> personById
+            = savedPersons
+                .stream()
+                .collect(Collectors.toMap(PersonEntity::getExternalId, Function.identity()));
 
         // Add relationships using managed entities only, for all relationship types dynamically
         for (Map.Entry<RelationshipType, Set<Long>> entry : relatedIdsByType.entrySet()) {
@@ -183,7 +182,7 @@ public class PersonDao {
         }
 
         // Save relationships (managed entities only)
-        personRelationshipDao.saveAll(mainEntity.getRelationships());
+        //personRelationshipDao.saveAll(new HashSet<>(mainEntity.getRelationships()));
 
         // Map to DTO without relationships first
         PersonDto mainDto = PersonDbMapper.mapDtoNoRel(mainEntity);
@@ -196,9 +195,8 @@ public class PersonDao {
                 .map(personById::get)
                 .filter(Objects::nonNull)
                 .map(PersonDbMapper::mapDtoNoRel)
-                .forEach(dto -> mainDto.addRelationship(relType, relType.getInverse(), dto));
+                .forEach(dto -> mainDto.addRelationship(relType, dto));
         });
-
 
         log.debug("Updated Entity {}", mainEntity.prettyPrint());
 
@@ -296,7 +294,7 @@ public class PersonDao {
         return savedPersons;
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
     public Set<PersonEntity> findAllByNameAndDateOfBirth(String name, LocalDate dob) {
         return personRepository.findAllByNameAndDateOfBirth(name, dob);
     }
@@ -316,10 +314,30 @@ public class PersonDao {
         log.debug("Deleted PersonEntity");
     }
 
-    public Set<PersonEntity> findByExternalId(Long externalId) {
-        log.debug("Finding PersonEntity internalId={}", externalId);
+    @Transactional(readOnly = true)
+    public Optional<PersonEntity> findByExternalIdEntity(Long externalId) {
+        log.debug("Finding PersonEntity By External ID={}", externalId);
         var toReturn = personRepository.findByExternalId(externalId);
         log.debug("Found PersonEntity: {}", toReturn);
         return toReturn;
+    }
+    @Transactional(readOnly = true)
+    public Optional<PersonDto> findByExternalId(Long externalId) {
+        log.debug("Finding PersonEntity By External ID={}", externalId);
+        var toReturn = personRepository.findByExternalId(externalId);
+        log.debug("Found PersonEntity: {}", toReturn);
+        return toReturn.map(e -> PersonDbMapper.mapDto(e, 3));
+    }
+
+    @Transactional
+    public void softDeletePersons(Set<Long> toDelete) {
+        log.info("Soft Deleting PersonEntities: {}", toDelete);
+        personRepository.updateDeleteByExternalId(toDelete, true);
+        log.debug("Soft Deleted PersonEntities");
+    }
+
+    @Transactional(readOnly = true)
+    public Set<PersonEntity> findAll() {
+        return new HashSet<>(personRepository.findAll());
     }
 }

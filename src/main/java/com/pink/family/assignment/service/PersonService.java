@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -20,6 +21,10 @@ public class PersonService {
 
     public PersonService(PersonDao personDao) {
         this.personDao = personDao;
+    }
+
+    public void softDeletePersons(Set<Long> toDelete) {
+        personDao.softDeletePersons(toDelete);
     }
 
     public static class Constants {
@@ -50,16 +55,17 @@ public class PersonService {
             return Optional.of(Constants.ErrorMsg.NO_DISTINCT_RECORD);
         }
 
-        for (PersonDto person : persons) {
-            String error = validatePersonPartnerAndChildren(person);
-            if (error.isEmpty()) {
-                return Optional.empty();
-            } else {
-                return Optional.of(error);
-            }
+        PersonDto person = persons.iterator().next();
+        if(person.isDeleted()) {
+            return Optional.empty();
         }
 
-        throw new PinkSystemException("Code should be unreachable");
+        String error = validatePersonPartnerAndChildren(person);
+        if (error.isEmpty()) {
+            return Optional.empty();
+        } else {
+            return Optional.of(error);
+        }
     }
 
     /**
@@ -70,17 +76,19 @@ public class PersonService {
      * An empty optional if no issues were encountered. An optional containing an error if an issues was encountered.
      */
     public Optional<String> hasPartnerAndChildrenExternalId(Long externalId) {
-        Set<PersonDto> personSet = personDao.findPersonFromExternalId(externalId, 3);
+        Optional<PersonDto> optPerson = personDao.findPersonFromExternalId(externalId, 3);
 
-        if(personSet.isEmpty()) {
+        if(optPerson.isEmpty()) {
             log.debug("No person found for external ID {}", MaskUtil.maskExternalId(externalId), PinkDebugException.inst());
             return Optional.of(Constants.ErrorMsg.NO_RECORD);
-        } else if(personSet.size() > 1) {
-            log.debug("Found Multiple of {}", MaskUtil.maskExternalId(externalId), PinkDebugException.inst());
-            return Optional.of(Constants.ErrorMsg.NO_DISTINCT_RECORD);
         }
 
-        String error = validatePersonPartnerAndChildren(personSet.iterator().next());
+        PersonDto person = optPerson.get();
+        if(person.isDeleted()) {
+            return Optional.empty();
+        }
+
+        String error = validatePersonPartnerAndChildren(person);
         if (error.isEmpty()) {
             return Optional.empty();
         } else {
@@ -151,7 +159,6 @@ public class PersonService {
 
         return ""; // no error
     }
-
 
     public PersonDto retrieveAndUpdate(
         Long externalId,

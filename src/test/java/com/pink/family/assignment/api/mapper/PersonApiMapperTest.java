@@ -50,7 +50,7 @@ class PersonApiMapperTest {
     void testParentMatchingFromChildRelation() {
         PersonDto parent1 = basePerson(2L, "Parent One");
         PersonDto child = basePerson(1L, "Child");
-        child.addRelationship(RelationshipType.CHILD, RelationshipType.PARENT, parent1);
+        child.addRelationship(RelationshipType.CHILD, parent1);
 
         Relation parentRel = new Relation().id(2L);
         PersonDetailsRequest request = new PersonDetailsRequest().parent1(parentRel);
@@ -67,7 +67,7 @@ class PersonApiMapperTest {
     void testChildrenMatchingFromParentRelation() {
         PersonDto child1 = basePerson(2L, "Child One");
         PersonDto parent = basePerson(1L, "Parent");
-        parent.addRelationship(RelationshipType.PARENT, RelationshipType.CHILD, child1);
+        parent.addRelationship(RelationshipType.PARENT, child1);
 
         Relation childRel = new Relation().id(2L);
         PersonDetailsRequest request = new PersonDetailsRequest().children(java.util.List.of(childRel));
@@ -83,7 +83,7 @@ class PersonApiMapperTest {
     void testPartnerMatching() {
         PersonDto partner = basePerson(2L, "Partner");
         PersonDto person = basePerson(1L, "Person");
-        person.addRelationship(RelationshipType.PARTNER, RelationshipType.PARTNER, partner);
+        person.addRelationship(RelationshipType.PARTNER, partner);
 
         Relation partnerRel = new Relation().id(2L);
         PersonDetailsRequest request = new PersonDetailsRequest().partner(partnerRel);
@@ -98,7 +98,7 @@ class PersonApiMapperTest {
     @DisplayName("Should not map relationships when no matching IDs found")
     void testNoMatchOnWrongIds() {
         PersonDto person = basePerson(1L, "Person");
-        person.addRelationship(RelationshipType.PARENT, RelationshipType.CHILD, basePerson(3L, "Child"));
+        person.addRelationship(RelationshipType.PARENT, basePerson(3L, "Child"));
 
         PersonDetailsRequest request = new PersonDetailsRequest()
             .parent1(new Relation().id(100L))

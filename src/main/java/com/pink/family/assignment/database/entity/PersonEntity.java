@@ -11,9 +11,10 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
-import lombok.NoArgsConstructor;
+import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
@@ -31,24 +32,43 @@ import java.util.stream.Collectors;
 @Table(name = "persons")
 @Getter
 @Setter
-@ToString
-@NoArgsConstructor
 @Builder
+@AllArgsConstructor
+@RequiredArgsConstructor
 public class PersonEntity {
 
+    /**
+     * Internal ID used by the application.
+     * Simple long for easy use and maintenance.
+     */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "id")
+    @Column(name = "id", updatable = false)
     private Long internalId;
-    @Nullable
-    @Column(unique = true, nullable = true)
+    /**
+     * External ID, the assignment wasn't specific, so
+     * the assumption is that this could be anything from a
+     * passport number to a club membership number
+     * so the uniqueness cannot be guaranteed.
+     */
+
+    @Column(unique = true)
     private Long externalId;
-    @Nullable
+
+    @Column(updatable=false)
     private String name;
-    @Nullable
+
+    @Column(updatable=false)
     private LocalDate dateOfBirth;
 
-    @OneToMany(mappedBy = "person", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Column(nullable = false, updatable=false)
+    private boolean deleted = false;
+
+    @OneToMany(
+        mappedBy = "person",
+        cascade = CascadeType.ALL,
+        orphanRemoval = true
+    )
     @ToString.Exclude
     @Builder.Default
     private Set<PersonRelationshipEntity> relationships = new HashSet<>();
@@ -61,43 +81,65 @@ public class PersonEntity {
         this.relationships = new HashSet<>();
     }
 
-    public PersonEntity(Long internalId, Long externalId, String name, LocalDate dateOfBirth, Set<PersonRelationshipEntity> relationships) {
+    public PersonEntity(
+        Long internalId,
+        Long externalId,
+        String name,
+        LocalDate dateOfBirth,
+        Set<PersonRelationshipEntity> relationships)
+    {
         this.internalId = internalId;
         this.externalId = externalId;
         this.name = name;
         this.dateOfBirth = dateOfBirth;
-        this.relationships = relationships != null ? relationships : new HashSet<>();
+        this.relationships = relationships != null ?
+            relationships :
+            new HashSet<>();
     }
 
-    public void addRelationship(PersonEntity related, RelationshipType type, RelationshipType inverseType) {
-        if (this.getInternalId() == null || related.getInternalId() == null) {
+    public void addRelationship(PersonEntity relatedPerson, RelationshipType type, RelationshipType inverseType) {
+        if (relatedPerson == null || type == null || inverseType == null) {
+            return;
+        }
+
+        if (this.getInternalId() == null || relatedPerson.getInternalId() == null) {
             throw new IllegalStateException(
                 "Both persons must have non-null IDs before adding relationship. Ensure entities have been saved first.");
         }
 
-        log.info("{} : Adding relationship {} with {}", this, type, related);
+        log.info("{} : Adding relationship {} with {}", this, type, relatedPerson);
 
-        // because sets we won't add multiples but there's no need to create a new object if we don't have to
-        var id = new PersonRelationshipId(this.getInternalId(), related.getInternalId());
-        if(!this.relationships.contains(id)) {
-            PersonRelationshipEntity rel = new PersonRelationshipEntity();
-            rel.setPerson(this);
-            rel.setRelatedPerson(related);
-            rel.setRelationshipType(type);
-            rel.setInversRelationshipType(inverseType);
-            rel.setId(id);
-            this.relationships.add(rel);
+        // Forward relationship
+        PersonRelationshipId id = new PersonRelationshipId(this.getInternalId(), relatedPerson.getInternalId(), type);
+        PersonRelationshipEntity forwardRel = this.relationships.stream()
+            .filter(r -> r.getId().equals(id))
+            .findFirst()
+            .orElse(null);
+
+        if (forwardRel == null) {
+            forwardRel = new PersonRelationshipEntity();
+            forwardRel.setId(id);
+            forwardRel.setPerson(this);
+            forwardRel.setRelatedPerson(relatedPerson);
+            this.relationships.add(forwardRel);
         }
 
-        id = new PersonRelationshipId(related.getInternalId(), this.getInternalId());
-        if(!related.relationships.contains(id)) {
-            PersonRelationshipEntity inverse = new PersonRelationshipEntity();
-            inverse.setPerson(related);
-            inverse.setRelatedPerson(this);
-            inverse.setRelationshipType(inverseType);
-            inverse.setInversRelationshipType(type);
-            inverse.setId(id);
-            related.relationships.add(inverse);
+        // Inverse relationship
+        PersonRelationshipId inverseId = new PersonRelationshipId(relatedPerson.getInternalId(),
+            this.getInternalId(),
+            inverseType
+        );
+        PersonRelationshipEntity inverseRel = relatedPerson.relationships.stream()
+            .filter(r -> r.getId().equals(inverseId))
+            .findFirst()
+            .orElse(null);
+
+        if (inverseRel == null) {
+            inverseRel = new PersonRelationshipEntity();
+            inverseRel.setId(inverseId);
+            inverseRel.setPerson(relatedPerson);
+            inverseRel.setRelatedPerson(this);
+            relatedPerson.relationships.add(inverseRel);
         }
     }
 
@@ -156,10 +198,14 @@ public class PersonEntity {
 
         if (relationships != null && !relationships.isEmpty()) {
             for (PersonRelationshipEntity rel : relationships) {
-                if (rel == null) continue;
-                RelationshipType type = rel.getRelationshipType();
+                if (rel == null) {
+                    continue;
+                }
+                RelationshipType type = rel.getId().getRelationshipType();
                 PersonEntity related = rel.getRelatedPerson();
-                if (related == null) continue;
+                if (related == null) {
+                    continue;
+                }
 
                 sb.append(indentStr).append("  ").append(type).append(":\n");
                 related.prettyPrintHelper(sb, indent + 2, visited);
@@ -186,7 +232,9 @@ public class PersonEntity {
             getExternalId(),
             getName(),
             getDateOfBirth(),
-            relSummary.isEmpty() ? "none" : relSummary
+            relSummary.isEmpty() ?
+                "none" :
+                relSummary
         );
     }
 

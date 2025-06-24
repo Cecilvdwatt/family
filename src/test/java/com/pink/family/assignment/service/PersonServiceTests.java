@@ -152,7 +152,7 @@ class PersonServiceTests {
             addChildren(main, child1, child2, child3);
 
             when(personDao.findPersonFromExternalId(anyLong(), anyInt()))
-                .thenReturn(Set.of(main));
+                .thenReturn(Optional.of(main));
 
             assertThat(personService.hasPartnerAndChildrenExternalId(main.getExternalId())).isEmpty();
         }
@@ -169,7 +169,7 @@ class PersonServiceTests {
             addChildren(main, child1, child2, child3);
 
             when(personDao.findPersonFromExternalId(anyLong(), anyInt()))
-                .thenReturn(Set.of(main));
+                .thenReturn(Optional.of(main));
 
             assertThat(
                 personService.hasPartnerAndChildrenExternalId(main.getExternalId()))
@@ -192,7 +192,7 @@ class PersonServiceTests {
             addChildren(main, child1, child2, child3);
 
             when(personDao.findPersonFromExternalId(anyLong(), anyInt()))
-                .thenReturn(Set.of(main));
+                .thenReturn(Optional.of(main));
 
             assertThat(personService.hasPartnerAndChildrenExternalId(main.getExternalId()))
                 .contains(PersonService.Constants.ErrorMsg.NO_SHARED_CHILDREN);
