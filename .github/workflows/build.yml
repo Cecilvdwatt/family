@@ -18,6 +18,9 @@ jobs:
           distribution: 'temurin'
           java-version: '17'  # Or 21, depending on your project
 
+      - name: Ensure mvnw is executable
+        run: chmod +x mvnw
+
       - name: Build and test
         run: ./mvnw clean verify
 
