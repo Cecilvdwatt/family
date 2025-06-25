@@ -1,7 +1,5 @@
 package com.pink.family.assignment.database.dao;
 
-import com.pink.family.api.rest.client.ApiClient;
-import com.pink.family.api.rest.client.reference.DefaultApi;
 import com.pink.family.assignment.database.entity.PersonEntity;
 import com.pink.family.assignment.database.entity.PersonRelationshipEntity;
 import com.pink.family.assignment.database.entity.id.PersonRelationshipId;
@@ -18,7 +16,6 @@ import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
@@ -338,7 +335,7 @@ public class PersonDaoTests {
             );
 
             // Then: fetch parent and assert relationships
-            PersonEntity parent = personDao.findByExternalIdEntity(parentExternalId).get();
+            PersonEntity parent = personDao.findByExternalIdEntity(parentExternalId).orElseThrow();
 
             assertThat("Parent Person").isEqualTo(parent.getName());
             assertThat(LocalDate.of(1980, 5, 5)).isEqualTo(parent.getDateOfBirth());

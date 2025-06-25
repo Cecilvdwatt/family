@@ -75,7 +75,7 @@ class PersonApiMapperTest {
         FullPerson result = PersonApiMapper.mapToApi(parent, request);
 
         assertEquals(1, result.getChildren().size());
-        assertEquals(2L, result.getChildren().get(0).getId());
+        assertEquals(2L, result.getChildren().getFirst().getId());
     }
 
     @Test

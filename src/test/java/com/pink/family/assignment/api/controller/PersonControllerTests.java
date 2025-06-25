@@ -8,13 +8,14 @@ import com.pink.family.api.rest.client.model.FullPerson;
 import com.pink.family.api.rest.client.model.PersonDetailsRequest;
 import com.pink.family.api.rest.client.model.Relation;
 import com.pink.family.api.rest.client.model.SpecificPersonCheckRequest;
+import com.pink.family.assignment.constants.ErrorMessages;
 import com.pink.family.assignment.database.dao.PersonDao;
 import com.pink.family.assignment.database.entity.PersonEntity;
 import com.pink.family.assignment.database.entity.enums.RelationshipType;
 import com.pink.family.assignment.database.repository.PersonRelationshipRepository;
 import com.pink.family.assignment.database.repository.PersonRepository;
+import com.pink.family.assignment.dto.PersonDto;
 import com.pink.family.assignment.service.PersonService;
-import io.netty.channel.ChannelOption;
 import jakarta.persistence.EntityManager;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.hc.client5.http.config.RequestConfig;
@@ -23,63 +24,44 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.parallel.Execution;
-import org.junit.jupiter.api.parallel.ExecutionMode;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
-import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.cache.CacheManager;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
-import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.client.RestTemplate;
-import org.springframework.web.reactive.function.client.WebClient;
 import org.testcontainers.containers.MSSQLServerContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import reactor.netty.http.client.HttpClient;
 
 import static org.assertj.core.api.AssertionsForInterfaceTypes.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.fail;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.testcontainers.junit.jupiter.TestcontainersExtension;
 
-import java.io.IOException;
-import java.net.Socket;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
-import java.time.Duration;
 import java.time.LocalDate;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.Random;
-import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 import java.util.stream.LongStream;
 
 
 @Slf4j
 @Testcontainers
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@Transactional
+@ExtendWith(TestcontainersExtension.class)
 class PersonControllerTests {
 
     // Start container eagerly before any property resolution
@@ -95,7 +77,7 @@ class PersonControllerTests {
         dbContainer.start();
         // Wait for container to be ready (ping or simple connection test)
         try (Connection conn = DriverManager.getConnection(dbContainer.getJdbcUrl(), dbContainer.getUsername(), dbContainer.getPassword())) {
-            // connection successful
+            log.debug("Successful connection to container {}", conn);
         } catch (SQLException e) {
             throw new RuntimeException("container not ready", e);
         }
@@ -121,7 +103,6 @@ class PersonControllerTests {
     @Autowired
     private ObjectMapper objectMapper;
 
-    private ApiClient apiClient;
     private DefaultApi api;
     @Autowired
     private CacheManager cacheManager;
@@ -140,9 +121,9 @@ class PersonControllerTests {
 
     RestTemplate restTemplate;
 
-    @Transactional
+
     @BeforeEach
-    void setUp() throws IOException {
+    void setUp() {
 
         log.debug("Port Variable: {}", port);
         log.debug("Container Host: {}", dbContainer.getHost());
@@ -160,7 +141,6 @@ class PersonControllerTests {
             .build();
 
         HttpComponentsClientHttpRequestFactory factory = new HttpComponentsClientHttpRequestFactory(httpClient);
-        factory.setBufferRequestBody(false);
         factory.setReadTimeout(30000); // crank it up for debugging
 
         restTemplate = new RestTemplate(factory);
@@ -171,11 +151,10 @@ class PersonControllerTests {
 
         // Reset cache and DB
         cacheManager.getCacheNames()
-            .forEach(name -> cacheManager.getCache(name).clear());
+            .forEach(name -> Objects.requireNonNull(cacheManager.getCache(name)).clear());
 
         personRelationshipRepository.deleteAll();
         personRepository.deleteAll();
-        entityManager.flush();
     }
 
     @Nested
@@ -184,7 +163,7 @@ class PersonControllerTests {
 
         @Test
         @DisplayName("Should return 444 when multiple people match name and DOB")
-        void shouldReturn444_WhenMultiplePeopleMatchNameAndDob() throws Exception {
+        void shouldReturn444_WhenMultiplePeopleMatchNameAndDob() {
             // Setup: create multiple people with same name and DOB
             personDao.save(PersonEntity.builder()
                 .name("Alex")
@@ -201,8 +180,7 @@ class PersonControllerTests {
             // Request using name + DOB that matches both above
 
             try {
-                var response
-                    = api.v1PeopleCheckExistingPersonPostWithHttpInfo(
+                api.v1PeopleCheckExistingPersonPostWithHttpInfo(
                     new SpecificPersonCheckRequest()
                         .requestId("RQ_MULTIPLE")
                         .name("Alex")
@@ -213,7 +191,7 @@ class PersonControllerTests {
                 ErrorResponse error = e.getResponseBodyAs(ErrorResponse.class);
                 assert error != null;
                 assertEquals("444", error.getCode());
-                assertEquals(PersonService.Constants.ErrorMsg.NO_DISTINCT_RECORD, error.getMessage());
+                assertEquals(ErrorMessages.NO_DISTINCT_RECORD, error.getMessage());
                 assertEquals("RQ_MULTIPLE", error.getRequestId());
             }
         }
@@ -221,7 +199,7 @@ class PersonControllerTests {
 
         @Test
         @DisplayName("Should return 444 when only some children are shared with the partner")
-        void shouldReturn444_WhenNotAllChildrenAreSharedWithPartner() throws Exception {
+        void shouldReturn444_WhenNotAllChildrenAreSharedWithPartner() {
 
             Long mainId = getId();
             PersonEntity main = personDao.save(PersonEntity.builder()
@@ -278,7 +256,7 @@ class PersonControllerTests {
                 ErrorResponse error = e.getResponseBodyAs(ErrorResponse.class);
                 assert error != null;
                 assertEquals("444", error.getCode());
-                assertEquals(PersonService.Constants.ErrorMsg.NO_SHARED_CHILDREN, error.getMessage());
+                assertEquals(ErrorMessages.NO_SHARED_CHILDREN, error.getMessage());
                 assertEquals("RQ_NOT_SHARED", error.getRequestId());
             }
         }
@@ -286,7 +264,7 @@ class PersonControllerTests {
 
         @Test
         @DisplayName("Should return 200 when external ID is missing but name and DOB match an existing person")
-        void shouldReturn200_WhenIdMissingButNameAndDobMatch() throws Exception {
+        void shouldReturn200_WhenIdMissingButNameAndDobMatch() {
             // Save existing person
             PersonEntity existing = personDao.save(
                 PersonEntity.builder()
@@ -335,7 +313,7 @@ class PersonControllerTests {
 
         @Test
         @DisplayName("Should return 200 when a person has a partner and exactly 3 children with the same partner")
-        void shouldReturn200_WhenPartnerAnd3ChildrenExist() throws Exception {
+        void shouldReturn200_WhenPartnerAnd3ChildrenExist() {
 
             Long mainId =getId();
             // Setup (same as before)
@@ -440,7 +418,7 @@ class PersonControllerTests {
                 assertEquals(444, e.getStatusCode().value());
                 ErrorResponse error = objectMapper.readValue(e.getResponseBodyAsString(), ErrorResponse.class);
                 assertEquals("444", error.getCode());
-                assertEquals(PersonService.Constants.ErrorMsg.NOT_EXACTLY_3_CHILDREN, error.getMessage());
+                assertEquals(ErrorMessages.NOT_EXACTLY_3_CHILDREN, error.getMessage());
                 assertEquals("RQ999", error.getRequestId());
             }
         }
@@ -505,7 +483,7 @@ class PersonControllerTests {
                 assertEquals(444, e.getStatusCode().value());
                 ErrorResponse error = objectMapper.readValue(e.getResponseBodyAsString(), ErrorResponse.class);
                 assertEquals("444", error.getCode());
-                assertEquals(PersonService.Constants.ErrorMsg.NO_SHARED_CHILDREN, error.getMessage());
+                assertEquals(ErrorMessages.NO_SHARED_CHILDREN, error.getMessage());
                 assertEquals("RQ888", error.getRequestId());
             }
         }
@@ -558,14 +536,14 @@ class PersonControllerTests {
                 assertEquals(444, e.getStatusCode().value());
                 ErrorResponse error = objectMapper.readValue(e.getResponseBodyAsString(), ErrorResponse.class);
                 assertEquals("444", error.getCode());
-                assertEquals(PersonService.Constants.ErrorMsg.NO_UNDERAGE_CHILD, error.getMessage());
+                assertEquals(ErrorMessages.NO_UNDERAGE_CHILD, error.getMessage());
                 assertEquals("RQ777", error.getRequestId());
             }
         }
 
         @Test
         @DisplayName("Should return 200 when no external id but name, surname, and DOB match")
-        void shouldReturn200_WhenNoExternalIdButNameSurnameDobMatch() throws Exception {
+        void shouldReturn200_WhenNoExternalIdButNameSurnameDobMatch() {
             Long mainId = getId();
             PersonEntity main = PersonEntity.builder()
                 .name("Lucas")
@@ -659,7 +637,7 @@ class PersonControllerTests {
                 assertEquals(444, e.getStatusCode().value());
                 ErrorResponse error = objectMapper.readValue(e.getResponseBodyAsString(), ErrorResponse.class);
                 assertEquals("444", error.getCode());
-                assertEquals(PersonService.Constants.ErrorMsg.NO_SHARED_CHILDREN, error.getMessage());
+                assertEquals(ErrorMessages.NO_SHARED_CHILDREN, error.getMessage());
                 assertEquals("RQ_CHILDREN_NOT_MINE", error.getRequestId());
             }
         }
@@ -683,7 +661,7 @@ class PersonControllerTests {
                 assertEquals(444, e.getStatusCode().value());
                 ErrorResponse error = objectMapper.readValue(e.getResponseBodyAsString(), ErrorResponse.class);
                 assertEquals("444", error.getCode());
-                assertEquals(PersonService.Constants.ErrorMsg.NO_RECORD, error.getMessage());
+                assertEquals(ErrorMessages.NO_RECORD, error.getMessage());
                 assertEquals("RQ_NO_MATCH", error.getRequestId());
             }
         }
@@ -726,7 +704,7 @@ class PersonControllerTests {
             try {
                 person = api.v1PeoplePost(request);
             } catch (RestClientResponseException e) {
-                fail("API call failed with status " + e.getRawStatusCode() + ": " + e.getResponseBodyAsString());
+                fail("API call failed with status " + e.getStatusCode().value() + ": " + e.getResponseBodyAsString());
                 return; // defensive, though fail() will already abort
             }
 
@@ -734,16 +712,20 @@ class PersonControllerTests {
             assertThat(person.getName()).isEqualTo("Main Updated");
             assertThat(person.getBirthDate()).isEqualTo(LocalDate.of(1990, 5, 20));
 
+            assert person.getParent1() != null;
             assertThat(person.getParent1().getName()).isEqualTo("Parent One");
+            assert person.getParent2() != null;
             assertThat(person.getParent2().getName()).isEqualTo("Parent Two");
+            assert person.getPartner() != null;
             assertThat(person.getPartner().getName()).isEqualTo("Partner Person");
-            assertThat(person.getChildren().get(0).getName()).isEqualTo("Child Person");
+            assert person.getChildren() != null;
+            assertThat(person.getChildren().getFirst().getName()).isEqualTo("Child Person");
 
             // Verify update persisted to DB
             var saved = personDao.findByExternalId(mainId).stream().findFirst();
             assertThat(saved).isPresent();
-            assertThat(saved.get().getName()).isEqualTo("Main Updated");
-            assertThat(saved.get().getDateOfBirth()).isEqualTo(LocalDate.of(1990, 5, 20));
+            assertThat(saved.orElseThrow().getName()).isEqualTo("Main Updated");
+            assertThat(saved.orElseThrow().getDateOfBirth()).isEqualTo(LocalDate.of(1990, 5, 20));
         }
 
 
@@ -778,7 +760,7 @@ class PersonControllerTests {
             try {
                 person = api.v1PeoplePost(request);
             } catch (RestClientResponseException e) {
-                fail("API call failed with status " + e.getRawStatusCode() + ": " + e.getResponseBodyAsString());
+                fail("API call failed with status " + e.getStatusCode().value() + ": " + e.getResponseBodyAsString());
                 return;
             }
 
@@ -788,6 +770,7 @@ class PersonControllerTests {
             assertThat(person.getBirthDate()).isEqualTo(LocalDate.of(1990, 1, 1));
 
             assertThat(person.getParent1()).isNotNull();
+            assert person.getParent1() != null;
             assertThat(person.getParent1().getId()).isEqualTo(parent1Id);
             assertThat(person.getParent1().getName()).isEqualTo("Single Parent");
             assertThat(person.getParent1().getBirthDate()).isEqualTo(LocalDate.of(1955, 6, 15));
@@ -797,19 +780,32 @@ class PersonControllerTests {
 
             assertThat(person.getChildren()).hasSize(2);
             assertThat(person.getChildren())
-                .anyMatch(child -> child.getId().equals(child1Id) && child.getName().equals("Child One"))
-                .anyMatch(child -> child.getId().equals(child2Id) && child.getName().equals("Child Two"));
+                .anyMatch(child -> {
+                    assert child.getId() != null;
+                    if (!child.getId().equals(child1Id)) {
+                        return false;
+                    }
+                    assert child.getName() != null;
+                    return child.getName().equals("Child One");
+                })
+                .anyMatch(child -> {
+                    assert child.getId() != null;
+                    if (!child.getId().equals(child2Id)) {
+                        return false;
+                    }
+                    assert child.getName() != null;
+                    return child.getName().equals("Child Two");
+                });
 
             // Check DB updated accordingly
             var saved = personDao.findByExternalId(mainId).stream().findFirst();
             assertThat(saved).isPresent();
-            assertThat(saved.get().getName()).isEqualTo("Updated Name");
-            assertThat(saved.get().getDateOfBirth()).isEqualTo(LocalDate.of(1990, 1, 1));
+            assertThat(saved.orElseThrow().getName()).isEqualTo("Updated Name");
+            assertThat(saved.orElseThrow().getDateOfBirth()).isEqualTo(LocalDate.of(1990, 1, 1));
         }
 
 
         @Test
-        @Transactional
         @DisplayName("Should keep existing relationships if no relations are sent in update")
         void testUpdatePerson_NoRelationsSent_ExistingRelationsNotCleared() {
             Long mainId = getId();
@@ -829,7 +825,7 @@ class PersonControllerTests {
             mainPerson.addRelationship(parent, RelationshipType.CHILD, RelationshipType.PARENT);
             mainPerson.addRelationship(partner, RelationshipType.PARTNER, RelationshipType.PARTNER);
             mainPerson.addRelationship(child, RelationshipType.PARENT, RelationshipType.CHILD);
-            mainPerson = personDao.save(mainPerson);
+            personDao.save(mainPerson);
 
             var request = new PersonDetailsRequest()
                 .id(mainId)
@@ -847,21 +843,23 @@ class PersonControllerTests {
             assertThat(response.getName()).isEqualTo("Main Updated");
             assertThat(response.getBirthDate()).isEqualTo(LocalDate.of(1990, 1, 1));
 
-            var updated = personDao.findAll().stream().filter(e -> Objects.equals(e.getExternalId(), mainId))
-                .findFirst();
+            var updated = personDao.findByExternalIdDto(mainId);
             assertThat(updated).isPresent();
-            PersonEntity updatedPerson = updated.get();
+            PersonDto updatedPerson = updated.orElseThrow();
 
-            assertThat(updatedPerson.getRelationships()).hasSize(3);
-            Set<Long> relatedIds = updatedPerson.getRelationships().stream()
-                .map(r -> r.getRelatedPerson().getExternalId())
-                .collect(Collectors.toSet());
+            assertThat(updatedPerson.countAllRelations()).isEqualTo(3);
 
-            assertThat(relatedIds).containsExactlyInAnyOrder(parentId, partnerId, childId);
+            assertThat(updatedPerson.hasRelationExId(parentId)).isTrue();
+            assertThat(updatedPerson.hasRelationExId(RelationshipType.CHILD, parentId)).isTrue();
+
+            assertThat(updatedPerson.hasRelationExId(childId)).isTrue();
+            assertThat(updatedPerson.hasRelationExId(RelationshipType.PARENT, childId)).isTrue();
+
+            assertThat(updatedPerson.hasRelationExId(partnerId)).isTrue();
+            assertThat(updatedPerson.hasRelationExId(RelationshipType.PARTNER, partnerId)).isTrue();
         }
 
         @Test
-        @Transactional
         @DisplayName("Should add new relationships and keep existing relationships not mentioned in update")
         void testUpdatePerson_PartialRelationsSent_ExistingRelationsRetained() {
             Long mainId = getId();
@@ -880,9 +878,9 @@ class PersonControllerTests {
                 .name("Main Person")
                 .build());
 
-            PersonEntity parent = personDao.findByExternalIdEntity(existingParentId).get();
-            PersonEntity partner = personDao.findByExternalIdEntity(existingPartnerId).get();
-            PersonEntity child = personDao.findByExternalIdEntity(existingChildId).get();
+            PersonEntity parent = personDao.findByExternalIdEntity(existingParentId).orElseThrow();
+            PersonEntity partner = personDao.findByExternalIdEntity(existingPartnerId).orElseThrow();
+            PersonEntity child = personDao.findByExternalIdEntity(existingChildId).orElseThrow();
 
             mainPerson.addRelationship(parent, RelationshipType.CHILD, RelationshipType.PARENT);
             mainPerson.addRelationship(partner, RelationshipType.PARTNER, RelationshipType.PARTNER);
@@ -897,31 +895,33 @@ class PersonControllerTests {
 
             FullPerson response = api.v1PeoplePostWithHttpInfo(request).getBody();
 
+            assert response != null;
             assertThat(response.getId()).isEqualTo(mainId);
             assertThat(response.getName()).isEqualTo("Main Updated");
 
-            var updated = personDao.findAll().stream().filter(e -> Objects.equals(e.getExternalId(), mainId))
-                .findFirst();
 
+            var updated = personDao.findByExternalIdDto(mainId);
             assertThat(updated).isPresent();
-            PersonEntity updatedPerson = updated.get();
+            PersonDto updatedPerson = updated.orElseThrow();
 
-            assertThat(updatedPerson.getRelationships()).hasSize(4);
-            Set<Long> relatedIds = updatedPerson.getRelationships().stream()
-                .map(r -> r.getRelatedPerson().getExternalId())
-                .collect(Collectors.toSet());
+            assertThat(updatedPerson.countAllRelations()).isEqualTo(4);
 
-            assertThat(relatedIds).containsExactlyInAnyOrder(existingParentId,
-                existingPartnerId,
-                existingChildId,
-                newPartnerId
-            );
+            assertThat(updatedPerson.hasRelationExId(existingParentId)).isTrue();
+            assertThat(updatedPerson.hasRelationExId(RelationshipType.CHILD, existingParentId)).isTrue();
+
+            assertThat(updatedPerson.hasRelationExId(existingChildId)).isTrue();
+            assertThat(updatedPerson.hasRelationExId(RelationshipType.PARENT, existingChildId)).isTrue();
+
+            assertThat(updatedPerson.hasRelationExId(existingPartnerId)).isTrue();
+            assertThat(updatedPerson.hasRelationExId(RelationshipType.PARTNER, existingPartnerId)).isTrue();
+
+            assertThat(updatedPerson.hasRelationExId(newPartnerId)).isTrue();
+            assertThat(updatedPerson.hasRelationExId(RelationshipType.PARTNER, newPartnerId)).isTrue();
         }
 
         @Test
-        @Transactional
         @DisplayName("Should update person details without modifying existing relationships when same relations are sent")
-        void testUpdatePerson_DetailsUpdated_NoRelationChange() throws Exception {
+        void testUpdatePerson_DetailsUpdated_NoRelationChange() {
             Long mainId = getId();
             Long parentId = getId();
             Long partnerId = getId();
@@ -937,9 +937,9 @@ class PersonControllerTests {
                 .dateOfBirth(LocalDate.of(1980, 1, 1))
                 .build());
 
-            PersonEntity parent = personDao.findByExternalIdEntity(parentId).get();
-            PersonEntity partner = personDao.findByExternalIdEntity(partnerId).get();
-            PersonEntity child = personDao.findByExternalIdEntity(childId).get();
+            PersonEntity parent = personDao.findByExternalIdEntity(parentId).orElseThrow();
+            PersonEntity partner = personDao.findByExternalIdEntity(partnerId).orElseThrow();
+            PersonEntity child = personDao.findByExternalIdEntity(childId).orElseThrow();
 
             mainPerson.addRelationship(parent, RelationshipType.CHILD, RelationshipType.PARENT);
             mainPerson.addRelationship(partner, RelationshipType.PARTNER, RelationshipType.PARTNER);
@@ -956,26 +956,29 @@ class PersonControllerTests {
 
             FullPerson response = api.v1PeoplePostWithHttpInfo(request).getBody();
 
+            assert response != null;
             assertThat(response.getId()).isEqualTo(mainId);
             assertThat(response.getName()).isEqualTo("Updated Name");
 
-            var updated = personDao.findAll().stream().filter(e -> Objects.equals(e.getExternalId(), mainId))
-                .findFirst();
+            var updated = personDao.findByExternalIdDto(mainId);
+            assertThat(updated).isPresent();
+            PersonDto updatedPerson = updated.orElseThrow();
 
-            PersonEntity updatedPerson = updated.get();
+            assertThat(updatedPerson.countAllRelations()).isEqualTo(3);
 
-            assertThat(updatedPerson.getRelationships()).hasSize(3);
-            Set<Long> relatedIds = updatedPerson.getRelationships().stream()
-                .map(r -> r.getRelatedPerson().getExternalId())
-                .collect(Collectors.toSet());
+            assertThat(updatedPerson.hasRelationExId(parentId)).isTrue();
+            assertThat(updatedPerson.hasRelationExId(RelationshipType.CHILD, parentId)).isTrue();
 
-            assertThat(relatedIds).containsExactlyInAnyOrder(parentId, partnerId, childId);
+            assertThat(updatedPerson.hasRelationExId(childId)).isTrue();
+            assertThat(updatedPerson.hasRelationExId(RelationshipType.PARENT, childId)).isTrue();
+
+            assertThat(updatedPerson.hasRelationExId(partnerId)).isTrue();
+            assertThat(updatedPerson.hasRelationExId(RelationshipType.PARTNER, partnerId)).isTrue();
         }
 
         @Test
-        @Transactional
         @DisplayName("Should add new relationships without removing existing ones")
-        void testAddNewRelationships_PreservesExisting() throws Exception {
+        void testAddNewRelationships_PreservesExisting() {
             Long mainId = getId();
             Long existingParentId = getId();
             Long existingPartnerId = getId();
@@ -991,8 +994,8 @@ class PersonControllerTests {
                 .dateOfBirth(LocalDate.of(1980, 1, 1))
                 .build());
 
-            PersonEntity parent = personDao.findByExternalIdEntity(existingParentId).get();
-            PersonEntity partner = personDao.findByExternalIdEntity(existingPartnerId).get();
+            PersonEntity parent = personDao.findByExternalIdEntity(existingParentId).orElseThrow();
+            PersonEntity partner = personDao.findByExternalIdEntity(existingPartnerId).orElseThrow();
 
             mainPerson.addRelationship(parent, RelationshipType.CHILD, RelationshipType.PARENT);
             mainPerson.addRelationship(partner, RelationshipType.PARTNER, RelationshipType.PARTNER);
@@ -1012,26 +1015,27 @@ class PersonControllerTests {
             assertThat(response.getId()).isEqualTo(mainId);
             assertThat(response.getName()).isEqualTo("Updated Name");
 
-            var updated = personDao.findAll().stream().filter(e -> Objects.equals(e.getExternalId(), mainId))
+            var updated = personDao.findAllDto().stream().filter(e -> Objects.equals(e.getExternalId(), mainId))
                 .findFirst();
 
-            PersonEntity updatedPerson = updated.get();
+            PersonDto updatedPerson = updated.orElseThrow();
 
-            log.debug("Testing {}",updatedPerson.prettyPrint());
+            assertThat(updatedPerson.countAllRelations()).isEqualTo(3);
 
-            assertThat(updatedPerson.getRelationships()).hasSize(3);
-            Set<Long> relatedIds = updatedPerson.getRelationships().stream()
-                .map(r -> r.getRelatedPerson().getExternalId())
-                .collect(Collectors.toSet());
+            assertThat(updatedPerson.hasRelationExId(existingParentId)).isTrue();
+            assertThat(updatedPerson.hasRelationExId(RelationshipType.CHILD, existingParentId)).isTrue();
 
-            assertThat(relatedIds).containsExactlyInAnyOrder(existingParentId, existingPartnerId, newChildId);
+            assertThat(updatedPerson.hasRelationExId(newChildId)).isTrue();
+            assertThat(updatedPerson.hasRelationExId(RelationshipType.PARENT, newChildId)).isTrue();
+
+            assertThat(updatedPerson.hasRelationExId(existingPartnerId)).isTrue();
+            assertThat(updatedPerson.hasRelationExId(RelationshipType.PARTNER, existingPartnerId)).isTrue();
         }
 
         @Test
-        @Transactional
         @DisplayName("Should preserve existing relationships when null or empty relation sets are passed")
-        void testUpdateWithNullOrEmptyRelations_PreservesExistingRelationships() throws Exception {
-            Long mainId = getId();;
+        void testUpdateWithNullOrEmptyRelations_PreservesExistingRelationships() {
+            Long mainId = getId();
             Long parentId = getId();
             Long partnerId = getId();
             Long childId = getId();
@@ -1046,9 +1050,9 @@ class PersonControllerTests {
                 .dateOfBirth(LocalDate.of(1980, 1, 1))
                 .build());
 
-            PersonEntity parent = personDao.findByExternalIdEntity(parentId).get();
-            PersonEntity partner = personDao.findByExternalIdEntity(partnerId).get();
-            PersonEntity child = personDao.findByExternalIdEntity(childId).get();
+            PersonEntity parent = personDao.findByExternalIdEntity(parentId).orElseThrow();
+            PersonEntity partner = personDao.findByExternalIdEntity(partnerId).orElseThrow();
+            PersonEntity child = personDao.findByExternalIdEntity(childId).orElseThrow();
 
             mainPerson.addRelationship(parent, RelationshipType.CHILD, RelationshipType.PARENT);
             mainPerson.addRelationship(partner, RelationshipType.PARTNER, RelationshipType.PARTNER);
@@ -1066,20 +1070,24 @@ class PersonControllerTests {
 
             FullPerson response = api.v1PeoplePostWithHttpInfo(request).getBody();
 
+            assert response != null;
             assertThat(response.getId()).isEqualTo(mainId);
             assertThat(response.getName()).isEqualTo("Updated Name");
 
-            var updated = personDao.findAll().stream().filter(e -> Objects.equals(e.getExternalId(), mainId))
-                .findFirst();
+            var updated = personDao.findByExternalIdDto(mainId);
+            assertThat(updated).isPresent();
+            PersonDto updatedPerson = updated.orElseThrow();
 
-            PersonEntity updatedPerson = updated.get();
+            assertThat(updatedPerson.countAllRelations()).isEqualTo(3);
 
-            assertThat(updatedPerson.getRelationships()).hasSize(3);
-            Set<Long> relatedIds = updatedPerson.getRelationships().stream()
-                .map(r -> r.getRelatedPerson().getExternalId())
-                .collect(Collectors.toSet());
+            assertThat(updatedPerson.hasRelationExId(parentId)).isTrue();
+            assertThat(updatedPerson.hasRelationExId(RelationshipType.CHILD, parentId)).isTrue();
 
-            assertThat(relatedIds).containsExactlyInAnyOrder(parentId, partnerId, childId);
+            assertThat(updatedPerson.hasRelationExId(childId)).isTrue();
+            assertThat(updatedPerson.hasRelationExId(RelationshipType.PARENT, childId)).isTrue();
+
+            assertThat(updatedPerson.hasRelationExId(partnerId)).isTrue();
+            assertThat(updatedPerson.hasRelationExId(RelationshipType.PARTNER, partnerId)).isTrue();
         }
 
         @Test
@@ -1108,7 +1116,7 @@ class PersonControllerTests {
             try {
                 response = api.v1PeoplePost(request);
             } catch (RestClientResponseException e) {
-                fail("API call failed with status " + e.getRawStatusCode() + ": " + e.getResponseBodyAsString());
+                fail("API call failed with status " + e.getStatusCode().value() + ": " + e.getResponseBodyAsString());
                 return;
             }
 
@@ -1117,13 +1125,16 @@ class PersonControllerTests {
             assertThat(response.getBirthDate()).isEqualTo(LocalDate.of(2000, 1, 1));
 
             assertThat(response.getParent1()).isNotNull();
+            assert response.getParent1() != null;
             assertThat(response.getParent1().getId()).isEqualTo(parentId);
 
             assertThat(response.getPartner()).isNotNull();
+            assert response.getPartner() != null;
             assertThat(response.getPartner().getId()).isEqualTo(partnerId);
 
             assertThat(response.getChildren()).hasSize(1);
-            assertThat(response.getChildren().get(0).getId()).isEqualTo(childId);
+            assert response.getChildren() != null;
+            assertThat(response.getChildren().getFirst().getId()).isEqualTo(childId);
         }
 
 
@@ -1151,7 +1162,7 @@ class PersonControllerTests {
             try {
                 person = api.v1PeoplePost(request);
             } catch (RestClientResponseException e) {
-                fail("API call failed with status " + e.getRawStatusCode() + ": " + e.getResponseBodyAsString());
+                fail("API call failed with status " + e.getStatusCode().value() + ": " + e.getResponseBodyAsString());
                 return;
             }
 
@@ -1160,15 +1171,19 @@ class PersonControllerTests {
             assertThat(person.getBirthDate()).isEqualTo(LocalDate.of(1992, 1, 1));
 
             assertThat(person.getParent1()).isNotNull();
+            assert person.getParent1() != null;
             assertThat(person.getParent1().getId()).isEqualTo(parent1Id);
 
             assertThat(person.getParent2()).isNotNull();
+            assert person.getParent2() != null;
             assertThat(person.getParent2().getId()).isEqualTo(parent2Id);
 
             assertThat(person.getPartner()).isNotNull();
+            assert person.getPartner() != null;
             assertThat(person.getPartner().getId()).isEqualTo(partnerId);
 
             assertThat(person.getChildren()).hasSize(1);
+            assert person.getChildren() != null;
             assertThat(person.getChildren().getFirst().getId()).isEqualTo(childId);
 
             assertThat(personDao.findAll()).hasSize(5);
@@ -1196,7 +1211,7 @@ class PersonControllerTests {
             try {
                 person = api.v1PeoplePost(request);
             } catch (RestClientResponseException e) {
-                fail("API call failed with status " + e.getRawStatusCode() + ": " + e.getResponseBodyAsString());
+                fail("API call failed with status " + e.getStatusCode().value() + ": " + e.getResponseBodyAsString());
                 return;
             }
 
@@ -1212,9 +1227,9 @@ class PersonControllerTests {
             // Verify persistence
             var updatedPerson = personDao.findByExternalIdEntity(mainId).stream().findFirst();
             assertThat(updatedPerson).isPresent();
-            assertThat(updatedPerson.get().getName()).isEqualTo("Updated Name");
-            assertThat(updatedPerson.get().getDateOfBirth()).isEqualTo(LocalDate.of(1995, 3, 15));
-            assertThat(updatedPerson.get().getRelationships()).isEmpty();
+            assertThat(updatedPerson.orElseThrow().getName()).isEqualTo("Updated Name");
+            assertThat(updatedPerson.orElseThrow().getDateOfBirth()).isEqualTo(LocalDate.of(1995, 3, 15));
+            assertThat(updatedPerson.orElseThrow().getRelationships()).isEmpty();
         }
 
 
@@ -1235,7 +1250,7 @@ class PersonControllerTests {
                 // Uses generated client; assumes v1PeopleDelete is available and mapped correctly
                 api.v1PeopleDelete(List.of(validId, invalidId));
             } catch (RestClientResponseException e) {
-                fail("API DELETE call failed with status " + e.getRawStatusCode() + ": " + e.getResponseBodyAsString());
+                fail("API DELETE call failed with status " + e.getStatusCode().value() + ": " + e.getResponseBodyAsString());
                 return;
             }
 
@@ -1260,7 +1275,7 @@ class PersonControllerTests {
             try {
                 api.v1PeopleDelete(List.of(externalId, externalId, externalId));
             } catch (RestClientResponseException e) {
-                fail("API DELETE call failed with status " + e.getRawStatusCode() + ": " + e.getResponseBodyAsString());
+                fail("API DELETE call failed with status " + e.getStatusCode().value() + ": " + e.getResponseBodyAsString());
                 return;
             }
 
@@ -1290,7 +1305,7 @@ class PersonControllerTests {
             try {
                 api.v1PeopleDelete(ids);
             } catch (RestClientResponseException e) {
-                fail("API DELETE call failed with status " + e.getRawStatusCode() + ": " + e.getResponseBodyAsString());
+                fail("API DELETE call failed with status " + e.getStatusCode().value() + ": " + e.getResponseBodyAsString());
                 return;
             }
 
@@ -1321,13 +1336,12 @@ class PersonControllerTests {
             try {
                 api.v1PeopleDelete(List.of(externalId));
             } catch (RestClientResponseException e) {
-                fail("API DELETE failed with status " + e.getRawStatusCode() + ": " + e.getResponseBodyAsString());
+                fail("API DELETE failed with status " + e.getStatusCode().value() + ": " + e.getResponseBodyAsString());
                 return;
             }
 
             personDao.flush();
             PersonEntity updated = personDao.findByExternalIdEntity(externalId).orElseThrow();
-            entityManager.refresh(updated);
             assertThat(updated.isDeleted()).isTrue();
         }
 
@@ -1353,9 +1367,7 @@ class PersonControllerTests {
 
             FullPerson response = api.v1PeoplePost(request);
 
-            // Expect no response body — or null fields — depending on API contract
-            assertThat(response).isNotNull();
-            assertThat(response.getId()).isNull(); // Adjust if your API returns an empty object instead of nulls
+            assertThat(response).isNull();
 
             // Ensure no update occurred in DB
             PersonEntity fetched = personDao.findByExternalIdEntity(externalId).orElseThrow();
@@ -1380,13 +1392,12 @@ class PersonControllerTests {
             try {
                 api.v1PeopleDelete(List.of(externalId));
             } catch (RestClientResponseException e) {
-                fail("API DELETE failed with status " + e.getRawStatusCode() + ": " + e.getResponseBodyAsString());
+                fail("API DELETE failed with status " + e.getStatusCode().value() + ": " + e.getResponseBodyAsString());
                 return;
             }
 
             personDao.flush();
             var fetched = personDao.findByExternalIdEntity(externalId).orElseThrow();
-            entityManager.refresh(fetched);
             assertThat(fetched.isDeleted()).isTrue(); // Still blacklisted, no side effects
         }
 
@@ -1403,16 +1414,9 @@ class PersonControllerTests {
             ));
 
             try {
-
-                HttpHeaders headers = new HttpHeaders();
-                headers.setContentType(MediaType.APPLICATION_JSON);
-                headers.setAccept(List.of(MediaType.APPLICATION_JSON));
-                // Optional: to force the server to close the connection cleanly
-                headers.setConnection("close");
-
                 api.v1PeopleDelete(List.of(id1, id2));
             } catch (RestClientResponseException e) {
-                fail("API DELETE failed with status " + e.getRawStatusCode() + ": " + e.getResponseBodyAsString());
+                fail("API DELETE failed with status " + e.getStatusCode().value() + ": " + e.getResponseBodyAsString());
                 return;
             }
 
@@ -1420,9 +1424,6 @@ class PersonControllerTests {
 
             PersonEntity person1 = personDao.findByExternalIdEntity(id1).orElseThrow();
             PersonEntity person2 = personDao.findByExternalIdEntity(id2).orElseThrow();
-
-            entityManager.refresh(person1);
-            entityManager.refresh(person2);
 
             assertThat(person1.isDeleted()).isTrue();
             assertThat(person2.isDeleted()).isTrue();
@@ -1437,7 +1438,7 @@ class PersonControllerTests {
             try {
                 api.v1PeopleDelete(List.of(nonExistentId));
             } catch (RestClientResponseException e) {
-                fail("API DELETE failed with status " + e.getRawStatusCode() + ": " + e.getResponseBodyAsString());
+                fail("API DELETE failed with status " + e.getStatusCode().value() + ": " + e.getResponseBodyAsString());
                 return;
             }
 

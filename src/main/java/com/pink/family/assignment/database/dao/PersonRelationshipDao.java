@@ -9,7 +9,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -26,18 +25,18 @@ public class PersonRelationshipDao {
     private final PersonRelationshipRepository personRelationshipRepository;
 
     @Transactional
-    public List<PersonRelationshipEntity> saveAll(Set<PersonRelationshipEntity> relationships) {
+    public void saveAll(Set<PersonRelationshipEntity> relationships) {
         log.debug("Saving batch of PersonRelationshipEntity records:\n{}", relationships);
 
         if(CollectionUtils.isEmpty(relationships)) {
-            return new ArrayList<>();
+            return;
         }
 
         // Validate all relationships
         List<PersonRelationshipEntity> invalidRels = relationships.stream()
             .filter(rel -> rel.getPerson() == null || rel.getPerson().getInternalId() == null
                 || rel.getRelatedPerson() == null || rel.getRelatedPerson().getInternalId() == null)
-            .collect(Collectors.toList());
+            .toList();
 
         if (!invalidRels.isEmpty()) {
             String errMsg = String.format(
@@ -57,7 +56,6 @@ public class PersonRelationshipDao {
         List<PersonRelationshipEntity> saved = personRelationshipRepository.saveAll(uniqueRelationships);
 
         log.debug("Saved {} PersonRelationshipEntity records", saved.size());
-        return saved;
     }
 
     @Transactional

@@ -7,9 +7,7 @@ import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * Map between the DTOs and the Database Entities.
@@ -19,6 +17,7 @@ import java.util.Set;
  */
 @Slf4j
 public class PersonDbMapper {
+
 
     /**
      * Entry method that maps PersonEntity to PersonDto with full depth.

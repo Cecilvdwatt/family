@@ -3,8 +3,6 @@ package com.pink.family.assignment.database.entity.enums;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
-import java.util.Set;
-
 /**
  * Relationship types currently supported in the database.
  */

@@ -1,8 +1,6 @@
 package com.pink.family.assignment.database.repository;
 
-import com.pink.family.assignment.database.dao.PersonDao;
 import com.pink.family.assignment.database.entity.PersonEntity;
-import com.pink.family.assignment.database.entity.PersonRelationshipEntity;
 import com.pink.family.assignment.database.entity.enums.RelationshipType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,28 +20,24 @@ public class PersonRepositoryTests {
     @Autowired
     private PersonRepository personRepository;
 
-    private PersonEntity john;
-    private PersonEntity jane;
-    private PersonEntity child;
-
     @BeforeEach
     void setup() {
         // Clean DB before each test
         personRepository.deleteAll();
 
-        john = PersonEntity.builder()
+        PersonEntity john = PersonEntity.builder()
             .externalId(1001L)
             .name("John Doe")
             .dateOfBirth(LocalDate.of(1980, 5, 15))
             .build();
 
-        jane = PersonEntity.builder()
+        PersonEntity jane = PersonEntity.builder()
             .externalId(1002L)
             .name("Jane Doe")
             .dateOfBirth(LocalDate.of(1982, 3, 20))
             .build();
 
-        child = PersonEntity.builder()
+        PersonEntity child = PersonEntity.builder()
             .externalId(2001L)
             .name("Child Doe")
             .dateOfBirth(LocalDate.of(2010, 7, 1))

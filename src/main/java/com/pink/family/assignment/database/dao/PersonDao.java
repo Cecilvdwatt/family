@@ -7,12 +7,10 @@ import com.pink.family.assignment.database.entity.enums.RelationshipType;
 import com.pink.family.assignment.database.mapper.PersonDbMapper;
 import com.pink.family.assignment.database.repository.PersonRepository;
 import com.pink.family.assignment.dto.PersonDto;
-import com.pink.family.assignment.service.PersonService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.CollectionUtils;
 import org.springframework.util.ObjectUtils;
 
 import java.time.LocalDate;
@@ -333,6 +331,12 @@ public class PersonDao {
         log.debug("Found PersonEntity: {}", toReturn);
         return toReturn;
     }
+
+    @Transactional(readOnly = true)
+    public Optional<PersonDto> findByExternalIdDto(Long externalId) {
+        return findByExternalIdEntity(externalId).map(e -> PersonDbMapper.mapDto(e, 3));
+    }
+
     @Transactional(readOnly = true)
     public Optional<PersonDto> findByExternalId(Long externalId) {
         log.debug("Finding PersonEntity By External ID={}", externalId);
@@ -351,5 +355,15 @@ public class PersonDao {
     @Transactional(readOnly = true)
     public Set<PersonEntity> findAll() {
         return new HashSet<>(personRepository.findAll());
+    }
+
+    @Transactional(readOnly = true)
+    public Set<PersonDto> findAllDto() {
+        return personRepository
+            .findAll()
+            .stream()
+            .map(e ->
+                PersonDbMapper.mapDto(e, 3))
+            .collect(Collectors.toSet());
     }
 }

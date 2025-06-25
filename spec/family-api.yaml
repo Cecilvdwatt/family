@@ -174,9 +174,6 @@ components:
           type: string
           example: RQ0001
           description: ID of the request used for logging. If not provided one will be generated.
-        # Design note:
-        ##############
-        # Did a bit of googling on this one. Hopefully it's correct.
         id:
           type: integer
           format: int64

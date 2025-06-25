@@ -1,6 +1,5 @@
 package com.pink.family.assignment.database.entity.id;
 
-import com.pink.family.assignment.database.entity.PersonEntity;
 import com.pink.family.assignment.database.entity.enums.RelationshipType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;

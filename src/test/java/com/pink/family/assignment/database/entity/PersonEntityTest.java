@@ -82,9 +82,7 @@ class PersonEntityTest {
         PersonEntity p1 = new PersonEntity(null, 100L, "Person1", LocalDate.of(1980, 1, 1));
         PersonEntity p2 = new PersonEntity(2L, 200L, "Person2", LocalDate.of(1985, 2, 2));
 
-        IllegalStateException exception = assertThrows(IllegalStateException.class, () -> {
-            p1.addRelationship(p2, RelationshipType.PARENT, RelationshipType.CHILD);
-        });
+        IllegalStateException exception = assertThrows(IllegalStateException.class, () -> p1.addRelationship(p2, RelationshipType.PARENT, RelationshipType.CHILD));
 
         assertEquals("Both persons must have non-null IDs before adding relationship. Ensure entities have been saved first.", exception.getMessage());
     }

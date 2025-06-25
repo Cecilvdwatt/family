@@ -8,6 +8,7 @@ import java.time.LocalDate;
 import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -59,6 +60,21 @@ public class PersonDto {
         getRelations()
             .computeIfAbsent(type, t -> new HashSet<>())
             .add(relation);
+    }
+
+    public int countAllRelations() {
+        return getRelations().values().stream().mapToInt(Set::size).sum();
+    }
+
+    public boolean hasRelationExId(RelationshipType type, Long externalId) {
+        return getRelations(type).stream().map(PersonDto::getExternalId).anyMatch(i -> Objects.equals(i, externalId));
+    }
+
+    public boolean hasRelationExId(Long externalId) {
+        return getRelations()
+            .values().stream()
+            .flatMap(Set::stream)
+            .anyMatch(r -> Objects.equals(r.getExternalId(), externalId));
     }
 
     @Override

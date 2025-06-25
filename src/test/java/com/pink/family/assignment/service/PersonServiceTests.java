@@ -1,8 +1,10 @@
 package com.pink.family.assignment.service;
 
+import com.pink.family.assignment.constants.ErrorMessages;
 import com.pink.family.assignment.database.dao.PersonDao;
 import com.pink.family.assignment.database.entity.enums.RelationshipType;
 import com.pink.family.assignment.dto.PersonDto;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -10,6 +12,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 
 import java.time.LocalDate;
 import java.util.*;
@@ -17,13 +22,16 @@ import java.util.*;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import static org.mockito.Mockito.*;
 
-@ExtendWith(MockitoExtension.class)
+@SpringBootTest
 class PersonServiceTests {
 
-    @Mock
+    @MockBean
     private PersonDao personDao;
 
-    @InjectMocks
+    @Autowired
+    private MicrometerService micrometerService;
+
+    @Autowired
     private PersonService personService;
 
     private PersonDto buildPerson(long id, String name) {
@@ -109,7 +117,7 @@ class PersonServiceTests {
                 .thenReturn(Set.of(main));
 
             assertThat(personService.hasPartnerAndChildrenNameSurnameDob("Main", main.getDateOfBirth()))
-                .contains(PersonService.Constants.ErrorMsg.NO_PARTNER);
+                .contains(ErrorMessages.NO_PARTNER);
         }
 
         @Test
@@ -131,7 +139,7 @@ class PersonServiceTests {
                 .thenReturn(Set.of(main));
 
             assertThat(personService.hasPartnerAndChildrenNameSurnameDob("Main", main.getDateOfBirth()))
-                .contains(PersonService.Constants.ErrorMsg.NO_SHARED_CHILDREN);
+                .contains(ErrorMessages.NO_SHARED_CHILDREN);
         }
     }
 
@@ -173,7 +181,7 @@ class PersonServiceTests {
 
             assertThat(
                 personService.hasPartnerAndChildrenExternalId(main.getExternalId()))
-                .contains(PersonService.Constants.ErrorMsg.NO_PARTNER);
+                .contains(ErrorMessages.NO_PARTNER);
         }
 
         @Test
@@ -195,7 +203,7 @@ class PersonServiceTests {
                 .thenReturn(Optional.of(main));
 
             assertThat(personService.hasPartnerAndChildrenExternalId(main.getExternalId()))
-                .contains(PersonService.Constants.ErrorMsg.NO_SHARED_CHILDREN);
+                .contains(ErrorMessages.NO_SHARED_CHILDREN);
         }
     }
 }

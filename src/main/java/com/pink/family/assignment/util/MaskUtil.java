@@ -1,10 +1,13 @@
 package com.pink.family.assignment.util;
 
+import lombok.AccessLevel;
+import lombok.NoArgsConstructor;
 import org.springframework.util.ObjectUtils;
 
 /**
  * Utility class used to mask values.
  */
+@NoArgsConstructor(access = AccessLevel.PRIVATE)
 public class MaskUtil {
 
     public static String fullyMask(String input) {

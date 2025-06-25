@@ -5,7 +5,6 @@ import com.pink.family.assignment.database.entity.enums.RelationshipType;
 import com.pink.family.assignment.dto.PersonDto;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.mockito.InjectMocks;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.junit.jupiter.api.extension.ExtendWith;
 

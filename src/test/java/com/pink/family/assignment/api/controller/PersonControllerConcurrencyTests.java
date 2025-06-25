@@ -2,6 +2,7 @@ package com.pink.family.assignment.api.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pink.family.api.rest.server.model.SpecificPersonCheckRequest;
+import com.pink.family.assignment.constants.ErrorMessages;
 import com.pink.family.assignment.database.dao.PersonDao;
 import com.pink.family.assignment.database.dao.PersonRelationshipDao;
 import com.pink.family.assignment.database.entity.PersonEntity;
@@ -37,6 +38,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.hamcrest.Matchers.is;
 
+/**
+ * Just a little fun class to check multithreaded performance.
+ */
 @Slf4j
 @SpringBootTest(properties = {
     "logging.level.com.pink.family=INFO"
@@ -168,7 +172,9 @@ class PersonControllerConcurrencyTests {
             }
 
             executor.shutdown();
-            executor.awaitTermination(5, TimeUnit.MINUTES);
+            if(!executor.awaitTermination(5, TimeUnit.MINUTES)) {
+                throw new RuntimeException("Timeout waiting for threads to finish");
+            }
 
             long totalTime = 0;
             for (Future<Long> future : futures) {
@@ -179,22 +185,30 @@ class PersonControllerConcurrencyTests {
             double avgMillis = avgNanos / 1_000_000.0;
             double avgSeconds = avgMillis / 1000.0;
 
-            log.info(
-                "\n***************************************************" +
-                    "\n***********************************" +
-                    "\n********************" +
-                    "\nAverage response time: {} ms ({} s), Threads: {}, Total Time (ns): {}\n",
-                String.format("%.3f", avgMillis),
-                String.format("%.3f", avgSeconds),
-                threadCount, totalTime);
+            putMeasures(avgMillis, avgSeconds, threadCount, totalTime);
 
-            outputMicro();
-
-            log.info(
-                "\n********************" +
-                    "\n***********************************" +
-                    "\n***************************************************");
         }
+    }
+
+    private void putMeasures(double avgMillis, double avgSeconds, double threadCount, double totalTime) {
+        log.info(
+            """
+            ***************************************************
+            "***********************************
+            "********************
+            "Average response time: {} ms ({} s), Threads: {}, Total Time (ns): {}
+            """,
+            String.format("%.3f", avgMillis),
+            String.format("%.3f", avgSeconds),
+            threadCount, totalTime);
+
+        outputMicro();
+
+        log.info(
+            """
+            ********************
+            ***********************************
+            ***************************************************""");
     }
 
     private void outputMicro() {
@@ -293,7 +307,7 @@ class PersonControllerConcurrencyTests {
             .id(1122334455L)
             .dateOfBirth(LocalDate.of(1985, 5, 15));
 
-        int threads = 1;
+        int threads = 1000;
         ExecutorService executorService = Executors.newFixedThreadPool(threads);
         List<Future<?>> futures = new ArrayList<>();
 
@@ -307,7 +321,7 @@ class PersonControllerConcurrencyTests {
                             .content(objectMapper.writeValueAsString(request)))
                         .andExpect(status().is(444))
                         .andExpect(jsonPath("$.code").value("444"))
-                        .andExpect(jsonPath("$.message", is(PersonService.Constants.ErrorMsg.NO_SHARED_CHILDREN)))
+                        .andExpect(jsonPath("$.message", is(ErrorMessages.NO_SHARED_CHILDREN)))
                         .andExpect(jsonPath("$.requestId", is("RQ2")));
                 } catch (Exception e) {
                     throw new RuntimeException(e);
@@ -322,11 +336,11 @@ class PersonControllerConcurrencyTests {
         executorService.shutdown();
 
         long duration = System.nanoTime() - start;
-        log.info("\n***************************************************\n***********************************\n********************\nAverage response time: {} ms ({} s), Threads: {}, Total Time (ns): {}",
-            TimeUnit.NANOSECONDS.toMillis(duration / threads),
-            (double) duration / 1_000_000_000,
-            threads,
-            duration);
+        double avgNanos = (double) duration / threads;
+        double avgMillis = avgNanos / 1_000_000.0;
+        double avgSeconds = avgMillis / 1000.0;
+
+        putMeasures(avgMillis, avgSeconds, threads, duration);
     }
 
     private PersonEntity createChild(String name, LocalDate dob) {

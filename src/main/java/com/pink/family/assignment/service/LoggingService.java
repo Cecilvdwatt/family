@@ -15,17 +15,10 @@ import java.util.UUID;
 @Service
 public class LoggingService {
 
-
     /**
      * Generate a new ID.
      */
     public String generateID() {
-
-        // Design note:
-        ///////////////
-        // Keeping it simple. There's a lot of discussion to be had around how unique or valuable
-        // using a Guid is, but for the sake of this application it's being kept straight-forward.
-
         String id = UUID.randomUUID().toString();
         log.debug("Generated new ID: {}", id);
         return id;

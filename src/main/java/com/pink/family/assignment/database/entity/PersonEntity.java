@@ -2,7 +2,6 @@ package com.pink.family.assignment.database.entity;
 
 import com.pink.family.assignment.database.entity.enums.RelationshipType;
 import com.pink.family.assignment.database.entity.id.PersonRelationshipId;
-import jakarta.annotation.Nullable;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

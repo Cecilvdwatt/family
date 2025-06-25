@@ -67,10 +67,8 @@ public class CacheConfig {
     public static class Constant {
         public static final String PERSON_BY_EXTERNAL_ID = "personsByExternalIdCache";
         public static final String PERSONS_BY_NAME_DOB = "personsByNameSurnameCache";
-
-        // Design note: just made up some default values here.
-        public static int DEFAULT_MINUTE_DURATION = 10;
-        public static int DEFAULT_MAX_SIZE = 1000;
+        public static final int DEFAULT_MINUTE_DURATION = 10;
+        public static final int DEFAULT_MAX_SIZE = 1000;
     }
 
 }
