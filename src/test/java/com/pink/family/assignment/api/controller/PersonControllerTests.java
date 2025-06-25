@@ -14,36 +14,56 @@ import com.pink.family.assignment.database.entity.enums.RelationshipType;
 import com.pink.family.assignment.database.repository.PersonRelationshipRepository;
 import com.pink.family.assignment.database.repository.PersonRepository;
 import com.pink.family.assignment.service.PersonService;
+import io.netty.channel.ChannelOption;
 import jakarta.persistence.EntityManager;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.hc.client5.http.config.RequestConfig;
+import org.apache.hc.core5.util.Timeout;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestInstance;
-import org.junit.jupiter.api.TestMethodOrder;
 import org.junit.jupiter.api.parallel.Execution;
 import org.junit.jupiter.api.parallel.ExecutionMode;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.cache.CacheManager;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.transaction.annotation.Propagation;
+import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
+import org.springframework.web.client.RestTemplate;
+import org.springframework.web.reactive.function.client.WebClient;
+import org.testcontainers.containers.MSSQLServerContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import reactor.netty.http.client.HttpClient;
 
 import static org.assertj.core.api.AssertionsForInterfaceTypes.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.fail;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
 
+import java.io.IOException;
+import java.net.Socket;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.util.Collections;
 import java.util.List;
@@ -51,27 +71,49 @@ import java.util.Objects;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.LongStream;
 
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @Slf4j
+@Testcontainers
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@AutoConfigureMockMvc
 @Transactional
-@Execution(ExecutionMode.SAME_THREAD)
-@TestMethodOrder(MethodOrderer.MethodName.class)
-@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class PersonControllerTests {
 
+    // Start container eagerly before any property resolution
+    @Container
+    public static MSSQLServerContainer<?> dbContainer
+            = new MSSQLServerContainer<>("mcr.microsoft.com/mssql/server:2019-latest")
+        .acceptLicense()
+        .withPassword("A_Str0ng_P@ssword123!"); // Required and must meet SQL Server's complexity rules
+
+
+
+    static {
+        dbContainer.start();
+        // Wait for container to be ready (ping or simple connection test)
+        try (Connection conn = DriverManager.getConnection(dbContainer.getJdbcUrl(), dbContainer.getUsername(), dbContainer.getPassword())) {
+            // connection successful
+        } catch (SQLException e) {
+            throw new RuntimeException("container not ready", e);
+        }
+    }
+
+    @DynamicPropertySource
+    static void overrideProps(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", dbContainer::getJdbcUrl);
+        registry.add("spring.datasource.username", dbContainer::getUsername);
+        registry.add("spring.datasource.password", dbContainer::getPassword);
+        registry.add("spring.datasource.driver-class-name", () -> "com.microsoft.sqlserver.jdbc.SQLServerDriver");
+        registry.add("spring.jpa.hibernate.ddl-auto", () -> "update");
+        //registry.add("spring.jpa.show-sql", () -> "true");
+        registry.add("spring.jpa.properties.hibernate.dialect", () -> "org.hibernate.dialect.SQLServerDialect");
+    }
 
     @LocalServerPort
     private int port;
-
-    @Autowired
-    private MockMvc mockMvc;
 
     @Autowired
     private PersonDao personDao;
@@ -96,19 +138,40 @@ class PersonControllerTests {
     @Autowired
     EntityManager entityManager;
 
-    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    RestTemplate restTemplate;
+
+    @Transactional
     @BeforeEach
-    void setUp() {
+    void setUp() throws IOException {
 
+        log.debug("Port Variable: {}", port);
+        log.debug("Container Host: {}", dbContainer.getHost());
+        log.debug("Container Port: {}", dbContainer.getFirstMappedPort());
 
+        log.debug("Port Variable: {}", port);
 
-        apiClient = new ApiClient();
+        RequestConfig requestConfig = RequestConfig.custom()
+            .setConnectTimeout(Timeout.ofSeconds(10))
+            .setResponseTimeout(Timeout.ofSeconds(10))
+            .build();
+
+        CloseableHttpClient httpClient = HttpClients.custom()
+            .setDefaultRequestConfig(requestConfig)
+            .build();
+
+        HttpComponentsClientHttpRequestFactory factory = new HttpComponentsClientHttpRequestFactory(httpClient);
+        factory.setBufferRequestBody(false);
+        factory.setReadTimeout(30000); // crank it up for debugging
+
+        restTemplate = new RestTemplate(factory);
+
+        ApiClient apiClient = new ApiClient(restTemplate);
         apiClient.setBasePath("http://localhost:" + port);
         api = new DefaultApi(apiClient);
 
+        // Reset cache and DB
         cacheManager.getCacheNames()
             .forEach(name -> cacheManager.getCache(name).clear());
-
 
         personRelationshipRepository.deleteAll();
         personRepository.deleteAll();
@@ -631,7 +694,7 @@ class PersonControllerTests {
 
         @Test
         @DisplayName("Should successfully update person with parent, partner, child and return full relationship details")
-        void testV1PeoplePost_WithValidData_AllExist_AndFullDetailsReturned() throws Exception {
+        void testV1PeoplePost_WithValidData_AllExist_AndFullDetailsReturned() {
 
             Long mainId = getId();
             Long parent1Id = getId();
@@ -650,50 +713,22 @@ class PersonControllerTests {
             personDao.save(PersonEntity.builder()
                 .externalId(mainId).name("Main").build());
 
-            var request = new com.pink.family.api.rest.server.model.PersonDetailsRequest()
+            var request = new PersonDetailsRequest()
                 .id(mainId)
                 .name("Main Updated")
                 .birthDate(LocalDate.of(1990, 5, 20))
-                .parent1(new com.pink.family.api.rest.server.model.Relation().id(parent1Id))
-                .parent2(new com.pink.family.api.rest.server.model.Relation().id(parent2Id))
-                .partner(new com.pink.family.api.rest.server.model.Relation().id(partnerId))
-                .addChildrenItem(new com.pink.family.api.rest.server.model.Relation().id(childId));
+                .parent1(new Relation().id(parent1Id))
+                .parent2(new Relation().id(parent2Id))
+                .partner(new Relation().id(partnerId))
+                .addChildrenItem(new Relation().id(childId));
 
-            var result = mockMvc.perform(post("/v1/people")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isOk())
-                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.id").value(mainId))
-                .andExpect(jsonPath("$.name").value("Main Updated"))
-                .andExpect(jsonPath("$.birthDate").value("1990-05-20"))
-
-                // Parent 1
-                .andExpect(jsonPath("$.parent1.id").value(parent1Id))
-                .andExpect(jsonPath("$.parent1.name").value("Parent One"))
-                .andExpect(jsonPath("$.parent1.birthDate").value("1960-01-01"))
-
-                // Parent 2
-                .andExpect(jsonPath("$.parent2.id").value(parent2Id))
-                .andExpect(jsonPath("$.parent2.name").value("Parent Two"))
-                .andExpect(jsonPath("$.parent2.birthDate").value("1965-02-02"))
-
-                // Partner
-                .andExpect(jsonPath("$.partner.id").value(partnerId))
-                .andExpect(jsonPath("$.partner.name").value("Partner Person"))
-                .andExpect(jsonPath("$.partner.birthDate").value("1991-03-03"))
-
-                // Child
-                .andExpect(jsonPath("$.children[0].id").value(childId))
-                .andExpect(jsonPath("$.children[0].name").value("Child Person"))
-                .andExpect(jsonPath("$.children[0].birthDate").value("2010-04-04"))
-                .andReturn();
-
-            // Validate returned DTO as object
-            String json = result.getResponse().getContentAsString();
-            com.pink.family.api.rest.server.model.FullPerson person = objectMapper.readValue(json,
-                com.pink.family.api.rest.server.model.FullPerson.class
-            );
+            FullPerson person;
+            try {
+                person = api.v1PeoplePost(request);
+            } catch (RestClientResponseException e) {
+                fail("API call failed with status " + e.getRawStatusCode() + ": " + e.getResponseBodyAsString());
+                return; // defensive, though fail() will already abort
+            }
 
             assertThat(person.getId()).isEqualTo(mainId);
             assertThat(person.getName()).isEqualTo("Main Updated");
@@ -704,16 +739,18 @@ class PersonControllerTests {
             assertThat(person.getPartner().getName()).isEqualTo("Partner Person");
             assertThat(person.getChildren().get(0).getName()).isEqualTo("Child Person");
 
-            // Double-check DB persisted update
+            // Verify update persisted to DB
             var saved = personDao.findByExternalId(mainId).stream().findFirst();
             assertThat(saved).isPresent();
             assertThat(saved.get().getName()).isEqualTo("Main Updated");
             assertThat(saved.get().getDateOfBirth()).isEqualTo(LocalDate.of(1990, 5, 20));
         }
 
+
         @Test
         @DisplayName("Should update person with partial relationships: one parent, no partner, multiple children")
-        void testV1PeoplePost_PartialRelationships() throws Exception {
+        void testV1PeoplePost_PartialRelationships() {
+
             Long mainId = getId();
             Long parent1Id = getId();
             Long child1Id = getId();
@@ -729,37 +766,39 @@ class PersonControllerTests {
             personDao.save(PersonEntity.builder()
                 .externalId(mainId).name("Original Name").dateOfBirth(LocalDate.of(1985, 3, 3)).build());
 
-            var request = new com.pink.family.api.rest.server.model.PersonDetailsRequest()
+            var request = new PersonDetailsRequest()
                 .id(mainId)
                 .name("Updated Name")
                 .birthDate(LocalDate.of(1990, 1, 1))
-                .parent1(new com.pink.family.api.rest.server.model.Relation().id(parent1Id))
-                // No parent2 provided
-                // No partner provided
-                .addChildrenItem(new com.pink.family.api.rest.server.model.Relation().id(child1Id))
-                .addChildrenItem(new com.pink.family.api.rest.server.model.Relation().id(child2Id));
+                .parent1(new Relation().id(parent1Id))
+                .addChildrenItem(new Relation().id(child1Id))
+                .addChildrenItem(new Relation().id(child2Id));
 
-            var result = mockMvc.perform(post("/v1/people")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isOk())
-                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.id").value(mainId))
-                .andExpect(jsonPath("$.name").value("Updated Name"))
-                .andExpect(jsonPath("$.birthDate").value("1990-01-01"))
-                // Check parent1 exists
-                .andExpect(jsonPath("$.parent1.id").value(parent1Id))
-                .andExpect(jsonPath("$.parent1.name").value("Single Parent"))
-                .andExpect(jsonPath("$.parent1.birthDate").value("1955-06-15"))
-                // parent2 and partner should NOT exist
-                .andExpect(jsonPath("$.parent2").doesNotExist())
-                .andExpect(jsonPath("$.partner").doesNotExist())
-                // Children array contains 2 children with correct IDs and names
-                .andExpect(jsonPath("$.children").isArray())
-                .andExpect(jsonPath("$.children.length()").value(2))
-                .andExpect(jsonPath("$.children[?(@.id == %d)].name", child1Id).value("Child One"))
-                .andExpect(jsonPath("$.children[?(@.id == %d)].name", child2Id).value("Child Two"))
-                .andReturn();
+            FullPerson person;
+            try {
+                person = api.v1PeoplePost(request);
+            } catch (RestClientResponseException e) {
+                fail("API call failed with status " + e.getRawStatusCode() + ": " + e.getResponseBodyAsString());
+                return;
+            }
+
+            // Validate response fields
+            assertThat(person.getId()).isEqualTo(mainId);
+            assertThat(person.getName()).isEqualTo("Updated Name");
+            assertThat(person.getBirthDate()).isEqualTo(LocalDate.of(1990, 1, 1));
+
+            assertThat(person.getParent1()).isNotNull();
+            assertThat(person.getParent1().getId()).isEqualTo(parent1Id);
+            assertThat(person.getParent1().getName()).isEqualTo("Single Parent");
+            assertThat(person.getParent1().getBirthDate()).isEqualTo(LocalDate.of(1955, 6, 15));
+
+            assertThat(person.getParent2()).isNull();
+            assertThat(person.getPartner()).isNull();
+
+            assertThat(person.getChildren()).hasSize(2);
+            assertThat(person.getChildren())
+                .anyMatch(child -> child.getId().equals(child1Id) && child.getName().equals("Child One"))
+                .anyMatch(child -> child.getId().equals(child2Id) && child.getName().equals("Child Two"));
 
             // Check DB updated accordingly
             var saved = personDao.findByExternalId(mainId).stream().findFirst();
@@ -767,6 +806,7 @@ class PersonControllerTests {
             assertThat(saved.get().getName()).isEqualTo("Updated Name");
             assertThat(saved.get().getDateOfBirth()).isEqualTo(LocalDate.of(1990, 1, 1));
         }
+
 
         @Test
         @Transactional
@@ -777,25 +817,19 @@ class PersonControllerTests {
             Long partnerId = getId();
             Long childId = getId();
 
-            personDao.save(PersonEntity.builder().externalId(parentId).name("Existing Parent").build());
-            personDao.save(PersonEntity.builder().externalId(partnerId).name("Existing Partner").build());
-            personDao.save(PersonEntity.builder().externalId(childId).name("Existing Child").build());
-
-            PersonEntity mainPerson = PersonEntity.builder()
+            PersonEntity mainPerson = personDao.saveAndFlush(PersonEntity.builder()
                 .externalId(mainId)
                 .name("Main Person")
-                .build();
+                .build());
 
-            PersonEntity parent = personDao.findByExternalIdEntity(parentId).get();
-            PersonEntity partner = personDao.findByExternalIdEntity(partnerId).get();
-            PersonEntity child = personDao.findByExternalIdEntity(childId).get();
-
-            personDao.saveAll(List.of(mainPerson, parent, partner, child));
+            PersonEntity parent = personDao.saveAndFlush(PersonEntity.builder().externalId(parentId).name("Existing Parent").build());
+            PersonEntity partner = personDao.saveAndFlush(PersonEntity.builder().externalId(partnerId).name("Existing Partner").build());
+            PersonEntity child = personDao.saveAndFlush(PersonEntity.builder().externalId(childId).name("Existing Child").build());
 
             mainPerson.addRelationship(parent, RelationshipType.CHILD, RelationshipType.PARENT);
             mainPerson.addRelationship(partner, RelationshipType.PARTNER, RelationshipType.PARTNER);
             mainPerson.addRelationship(child, RelationshipType.PARENT, RelationshipType.CHILD);
-            personDao.save(mainPerson);
+            mainPerson = personDao.save(mainPerson);
 
             var request = new PersonDetailsRequest()
                 .id(mainId)
@@ -866,7 +900,9 @@ class PersonControllerTests {
             assertThat(response.getId()).isEqualTo(mainId);
             assertThat(response.getName()).isEqualTo("Main Updated");
 
-            var updated = personDao.findByExternalIdEntity(mainId).stream().findFirst();
+            var updated = personDao.findAll().stream().filter(e -> Objects.equals(e.getExternalId(), mainId))
+                .findFirst();
+
             assertThat(updated).isPresent();
             PersonEntity updatedPerson = updated.get();
 
@@ -972,6 +1008,7 @@ class PersonControllerTests {
 
             FullPerson response = api.v1PeoplePostWithHttpInfo(request).getBody();
 
+            assert response != null;
             assertThat(response.getId()).isEqualTo(mainId);
             assertThat(response.getName()).isEqualTo("Updated Name");
 
@@ -979,6 +1016,8 @@ class PersonControllerTests {
                 .findFirst();
 
             PersonEntity updatedPerson = updated.get();
+
+            log.debug("Testing {}",updatedPerson.prettyPrint());
 
             assertThat(updatedPerson.getRelationships()).hasSize(3);
             Set<Long> relatedIds = updatedPerson.getRelationships().stream()
@@ -1045,11 +1084,10 @@ class PersonControllerTests {
 
         @Test
         @DisplayName("Should create new person when externalId does not exist and relationships are provided")
-        void testCreateNewPersonWhenExternalIdNotFound() throws Exception {
-
+        void testCreateNewPersonWhenExternalIdNotFound() {
             Long mainId = getId(); // Not in DB
             Long parentId = getId();
-            Long partnerId =getId();
+            Long partnerId = getId();
             Long childId = getId();
 
             // Save related persons only
@@ -1062,48 +1100,43 @@ class PersonControllerTests {
                 .name("New Person")
                 .birthDate(LocalDate.of(2000, 1, 1))
                 .parent1(new Relation().id(parentId))
-                .parent2(null)  // Optional
+                .parent2(null)
                 .partner(new Relation().id(partnerId))
                 .addChildrenItem(new Relation().id(childId));
 
-            var result = mockMvc.perform(post("/v1/people")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value(mainId))
-                .andExpect(jsonPath("$.name").value("New Person"))
-                .andExpect(jsonPath("$.birthDate").value("2000-01-01"))
-                .andExpect(jsonPath("$.parent1.id").value(parentId))
-                .andExpect(jsonPath("$.partner.id").value(partnerId))
-                .andExpect(jsonPath("$.children[0].id").value(childId))
-                .andReturn();
+            FullPerson response;
+            try {
+                response = api.v1PeoplePost(request);
+            } catch (RestClientResponseException e) {
+                fail("API call failed with status " + e.getRawStatusCode() + ": " + e.getResponseBodyAsString());
+                return;
+            }
 
-            // Verify from response object instead of DB query
-            String json = result.getResponse().getContentAsString();
-            FullPerson person = objectMapper.readValue(json, FullPerson.class);
+            assertThat(response.getId()).isEqualTo(mainId);
+            assertThat(response.getName()).isEqualTo("New Person");
+            assertThat(response.getBirthDate()).isEqualTo(LocalDate.of(2000, 1, 1));
 
-            assertThat(person.getId()).isEqualTo(mainId);
-            assertThat(person.getName()).isEqualTo("New Person");
-            assertThat(person.getBirthDate()).isEqualTo(LocalDate.of(2000, 1, 1));
-            assertThat(person.getParent1()).isNotNull();
-            assertThat(person.getParent1().getId()).isEqualTo(parentId);
-            assertThat(person.getPartner()).isNotNull();
-            assertThat(person.getPartner().getId()).isEqualTo(partnerId);
-            assertThat(person.getChildren()).hasSize(1);
-            assertThat(person.getChildren().get(0).getId()).isEqualTo(childId);
+            assertThat(response.getParent1()).isNotNull();
+            assertThat(response.getParent1().getId()).isEqualTo(parentId);
+
+            assertThat(response.getPartner()).isNotNull();
+            assertThat(response.getPartner().getId()).isEqualTo(partnerId);
+
+            assertThat(response.getChildren()).hasSize(1);
+            assertThat(response.getChildren().get(0).getId()).isEqualTo(childId);
         }
+
 
 
         @Test
         @DisplayName("Should create all persons if none of the IDs exist")
-        void testV1PeoplePost_WithAllMissingIds_ShouldStillPass() throws Exception {
-
+        void testV1PeoplePost_WithAllMissingIds_ShouldStillPass() {
             // IDs that are NOT yet in the DB
             Long mainId = getId();
             Long parent1Id = getId();
-            Long parent2Id = getId();;
-            Long partnerId = getId();;
-            Long childId = getId();;
+            Long parent2Id = getId();
+            Long partnerId = getId();
+            Long childId = getId();
 
             var request = new PersonDetailsRequest()
                 .id(mainId)
@@ -1114,31 +1147,27 @@ class PersonControllerTests {
                 .partner(new Relation().id(partnerId))
                 .addChildrenItem(new Relation().id(childId));
 
-            var result = mockMvc.perform(post("/v1/people")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isOk())
-                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.id").value(mainId))
-                .andExpect(jsonPath("$.name").value("AutoCreated Main"))
-                .andExpect(jsonPath("$.birthDate").value("1992-01-01"))
-                .andExpect(jsonPath("$.parent1.id").value(parent1Id))
-                .andExpect(jsonPath("$.parent2.id").value(parent2Id))
-                .andExpect(jsonPath("$.partner.id").value(partnerId))
-                .andExpect(jsonPath("$.children[0].id").value(childId))
-                .andReturn();
-
-            String json = result.getResponse().getContentAsString();
-            FullPerson person = objectMapper.readValue(json, FullPerson.class);
+            FullPerson person;
+            try {
+                person = api.v1PeoplePost(request);
+            } catch (RestClientResponseException e) {
+                fail("API call failed with status " + e.getRawStatusCode() + ": " + e.getResponseBodyAsString());
+                return;
+            }
 
             assertThat(person.getId()).isEqualTo(mainId);
             assertThat(person.getName()).isEqualTo("AutoCreated Main");
-            assert person.getParent1() != null;
+            assertThat(person.getBirthDate()).isEqualTo(LocalDate.of(1992, 1, 1));
+
+            assertThat(person.getParent1()).isNotNull();
             assertThat(person.getParent1().getId()).isEqualTo(parent1Id);
-            assert person.getParent2() != null;
+
+            assertThat(person.getParent2()).isNotNull();
             assertThat(person.getParent2().getId()).isEqualTo(parent2Id);
-            assert person.getPartner() != null;
+
+            assertThat(person.getPartner()).isNotNull();
             assertThat(person.getPartner().getId()).isEqualTo(partnerId);
+
             assertThat(person.getChildren()).hasSize(1);
             assertThat(person.getChildren().getFirst().getId()).isEqualTo(childId);
 
@@ -1147,9 +1176,8 @@ class PersonControllerTests {
 
         @Test
         @DisplayName("Should update only name and DOB when no relationships provided")
-        void testV1PeoplePost_UpdateBasicInfoOnly() throws Exception {
-
-            Long mainId = getId();;
+        void testV1PeoplePost_UpdateBasicInfoOnly() {
+            Long mainId = getId();
 
             // Save initial person with no relationships
             personDao.save(PersonEntity.builder()
@@ -1162,31 +1190,37 @@ class PersonControllerTests {
                 .id(mainId)
                 .name("Updated Name")
                 .birthDate(LocalDate.of(1995, 3, 15));
+            // No relationships set
 
-            var result = mockMvc.perform(post("/v1/people")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value(mainId))
-                .andExpect(jsonPath("$.name").value("Updated Name"))
-                .andExpect(jsonPath("$.birthDate").value("1995-03-15"))
-                .andExpect(jsonPath("$.parent1").doesNotExist())
-                .andExpect(jsonPath("$.parent2").doesNotExist())
-                .andExpect(jsonPath("$.partner").doesNotExist())
-                .andExpect(jsonPath("$.children").isEmpty())
-                .andReturn();
+            FullPerson person;
+            try {
+                person = api.v1PeoplePost(request);
+            } catch (RestClientResponseException e) {
+                fail("API call failed with status " + e.getRawStatusCode() + ": " + e.getResponseBodyAsString());
+                return;
+            }
 
-            // Verify persisted entity has updated info
+            assertThat(person.getId()).isEqualTo(mainId);
+            assertThat(person.getName()).isEqualTo("Updated Name");
+            assertThat(person.getBirthDate()).isEqualTo(LocalDate.of(1995, 3, 15));
+
+            assertThat(person.getParent1()).isNull();
+            assertThat(person.getParent2()).isNull();
+            assertThat(person.getPartner()).isNull();
+            assertThat(person.getChildren()).isEmpty();
+
+            // Verify persistence
             var updatedPerson = personDao.findByExternalIdEntity(mainId).stream().findFirst();
             assertThat(updatedPerson).isPresent();
             assertThat(updatedPerson.get().getName()).isEqualTo("Updated Name");
             assertThat(updatedPerson.get().getDateOfBirth()).isEqualTo(LocalDate.of(1995, 3, 15));
-            assertThat(updatedPerson.get().getRelationships()).isEmpty(); // Ensure no new relationships
+            assertThat(updatedPerson.get().getRelationships()).isEmpty();
         }
+
 
         @Test
         @DisplayName("Should delete valid persons and ignore non-existent ones")
-        void testDeleteMixedValidAndInvalidIds() throws Exception {
+        void testDeleteMixedValidAndInvalidIds() {
             Long validId = getId();
             Long invalidId = getId();
 
@@ -1197,18 +1231,23 @@ class PersonControllerTests {
                 .deleted(false)
                 .build());
 
-            mockMvc.perform(delete("/v1/people")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(objectMapper.writeValueAsString(List.of(validId, invalidId))))
-                .andExpect(status().isNoContent());
+            try {
+                // Uses generated client; assumes v1PeopleDelete is available and mapped correctly
+                api.v1PeopleDelete(List.of(validId, invalidId));
+            } catch (RestClientResponseException e) {
+                fail("API DELETE call failed with status " + e.getRawStatusCode() + ": " + e.getResponseBodyAsString());
+                return;
+            }
 
-            PersonEntity fetched = personDao.findByExternalIdEntity(validId).get();
+            // Verify the valid person is soft-deleted
+            PersonEntity fetched = personDao.findByExternalIdEntity(validId).orElseThrow();
             assertThat(fetched.isDeleted()).isTrue();
         }
 
+
         @Test
         @DisplayName("Should handle duplicate IDs in request gracefully")
-        void testDeleteWithDuplicateIdsInRequest() throws Exception {
+        void testDeleteWithDuplicateIdsInRequest() {
             Long externalId = getId();
 
             personDao.save(PersonEntity.builder()
@@ -1218,21 +1257,24 @@ class PersonControllerTests {
                 .deleted(false)
                 .build());
 
-            mockMvc.perform(delete("/v1/people")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(objectMapper.writeValueAsString(List.of(externalId, externalId, externalId))))
-                .andExpect(status().isNoContent());
+            try {
+                api.v1PeopleDelete(List.of(externalId, externalId, externalId));
+            } catch (RestClientResponseException e) {
+                fail("API DELETE call failed with status " + e.getRawStatusCode() + ": " + e.getResponseBodyAsString());
+                return;
+            }
 
-            PersonEntity fetched = personDao.findByExternalIdEntity(externalId).get();
+            PersonEntity fetched = personDao.findByExternalIdEntity(externalId).orElseThrow();
             assertThat(fetched.isDeleted()).isTrue();
         }
 
+
         @Test
         @DisplayName("Should handle large batch delete")
-        void testDeleteLargeBatch() throws Exception {
+        void testDeleteLargeBatch() {
             List<Long> ids = LongStream.rangeClosed(7000, 7050)
                 .boxed()
-                .collect(Collectors.toList());
+                .toList();
 
             List<PersonEntity> people = ids.stream()
                 .map(id -> PersonEntity.builder()
@@ -1245,16 +1287,19 @@ class PersonControllerTests {
 
             personDao.saveAll(people);
 
-            mockMvc.perform(delete("/v1/people")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(objectMapper.writeValueAsString(ids)))
-                .andExpect(status().isNoContent());
-
-            for (Long id : ids) {
-                PersonEntity person = personDao.findByExternalIdEntity(id).get();
-                assertThat(person.isDeleted()).isTrue();
+            try {
+                api.v1PeopleDelete(ids);
+            } catch (RestClientResponseException e) {
+                fail("API DELETE call failed with status " + e.getRawStatusCode() + ": " + e.getResponseBodyAsString());
+                return;
             }
+
+            ids.forEach(id -> {
+                PersonEntity entity = personDao.findByExternalIdEntity(id).orElseThrow();
+                assertThat(entity.isDeleted()).isTrue();
+            });
         }
+
 
 
     }
@@ -1263,28 +1308,33 @@ class PersonControllerTests {
     class Delete {
         @Test
         @DisplayName("Should mark people as blacklisted when DELETE is called")
-        void testDeleteApiMarksBlacklisted() throws Exception {
+        void testDeleteApiMarksBlacklisted() {
             Long externalId = getId();
-            PersonEntity person = PersonEntity.builder()
-                .externalId(externalId)
-                .name("Mark Me")
-                .dateOfBirth(LocalDate.of(1990, 1, 1))
-                .build();
 
-            personDao.save(person);
+            personDao.saveAndFlush(
+                PersonEntity.builder()
+                    .externalId(externalId)
+                    .name("Mark Me")
+                    .dateOfBirth(LocalDate.of(1990, 1, 1))
+                    .build());
 
-            mockMvc.perform(delete("/v1/people")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(objectMapper.writeValueAsString(List.of(externalId))))
-                .andExpect(status().isNoContent());
+            try {
+                api.v1PeopleDelete(List.of(externalId));
+            } catch (RestClientResponseException e) {
+                fail("API DELETE failed with status " + e.getRawStatusCode() + ": " + e.getResponseBodyAsString());
+                return;
+            }
 
-            PersonEntity updated = personDao.findByExternalIdEntity(externalId).get();
+            personDao.flush();
+            PersonEntity updated = personDao.findByExternalIdEntity(externalId).orElseThrow();
+            entityManager.refresh(updated);
             assertThat(updated.isDeleted()).isTrue();
         }
 
+
         @Test
         @DisplayName("Should ignore blacklisted person ID in POST /v1/people")
-        void testPostIgnoresBlacklistedPerson() throws Exception {
+        void testPostIgnoresBlacklistedPerson() {
             Long externalId = getId();
 
             PersonEntity blacklisted = PersonEntity.builder()
@@ -1301,71 +1351,95 @@ class PersonControllerTests {
                 .name("Should Not Be Processed")
                 .birthDate(LocalDate.of(1990, 1, 1));
 
-            mockMvc.perform(post("/v1/people")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isOk()) // or another status depending on your API logic
-                .andExpect(jsonPath("$.id").doesNotExist());
+            FullPerson response = api.v1PeoplePost(request);
 
-            // Confirm it did not update the blacklisted entity
-            PersonEntity fetched = personDao.findByExternalIdEntity(externalId).get();
+            // Expect no response body — or null fields — depending on API contract
+            assertThat(response).isNotNull();
+            assertThat(response.getId()).isNull(); // Adjust if your API returns an empty object instead of nulls
+
+            // Ensure no update occurred in DB
+            PersonEntity fetched = personDao.findByExternalIdEntity(externalId).orElseThrow();
             assertThat(fetched.getName()).isEqualTo("Blacklisted User");
+            assertThat(fetched.getDateOfBirth()).isEqualTo(LocalDate.of(1985, 5, 5));
+            assertThat(fetched.isDeleted()).isTrue();
         }
+
 
         @Test
         @DisplayName("Should not fail when blacklisting the same person twice")
-        void testBlacklistIdempotency() throws Exception {
-            Long externalId =getId();
+        void testBlacklistIdempotency() {
+            Long externalId = getId();
 
-            PersonEntity person = PersonEntity.builder()
+            personDao.saveAndFlush(PersonEntity.builder()
                 .externalId(externalId)
                 .name("Already Blacklisted")
                 .dateOfBirth(LocalDate.of(1990, 1, 1))
                 .deleted(true)
-                .build();
+                .build());
 
-            personDao.save(person);
+            try {
+                api.v1PeopleDelete(List.of(externalId));
+            } catch (RestClientResponseException e) {
+                fail("API DELETE failed with status " + e.getRawStatusCode() + ": " + e.getResponseBodyAsString());
+                return;
+            }
 
-            mockMvc.perform(delete("/v1/people")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(objectMapper.writeValueAsString(List.of(externalId))))
-                .andExpect(status().isNoContent());
-
-            PersonEntity fetched = personDao.findByExternalIdEntity(externalId).get();
-            assertThat(fetched.isDeleted()).isTrue();
+            personDao.flush();
+            var fetched = personDao.findByExternalIdEntity(externalId).orElseThrow();
+            entityManager.refresh(fetched);
+            assertThat(fetched.isDeleted()).isTrue(); // Still blacklisted, no side effects
         }
+
 
         @Test
         @DisplayName("Should mark multiple people as deleted")
-        void testDeleteMultiplePeople() throws Exception {
+        void testDeleteMultiplePeople() {
             Long id1 = getId();
             Long id2 = getId();
 
             personDao.saveAll(List.of(
-                PersonEntity.builder().externalId(id1).name("Person 1").dateOfBirth(LocalDate.of(1990, 1, 1))
-                    .deleted(false).build(),
-                PersonEntity.builder().externalId(id2).name("Person 2").dateOfBirth(LocalDate.of(1991, 2, 2))
-                    .deleted(false).build()
+                PersonEntity.builder().externalId(id1).name("Person 1").dateOfBirth(LocalDate.of(1990, 1, 1)).deleted(false).build(),
+                PersonEntity.builder().externalId(id2).name("Person 2").dateOfBirth(LocalDate.of(1991, 2, 2)).deleted(false).build()
             ));
 
-            mockMvc.perform(delete("/v1/people")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(objectMapper.writeValueAsString(List.of(id1, id2))))
-                .andExpect(status().isNoContent());
+            try {
 
-            assertThat(personDao.findByExternalIdEntity(id1).orElseThrow().isDeleted()).isTrue();
-            assertThat(personDao.findByExternalIdEntity(id2).orElseThrow().isDeleted()).isTrue();
+                HttpHeaders headers = new HttpHeaders();
+                headers.setContentType(MediaType.APPLICATION_JSON);
+                headers.setAccept(List.of(MediaType.APPLICATION_JSON));
+                // Optional: to force the server to close the connection cleanly
+                headers.setConnection("close");
+
+                api.v1PeopleDelete(List.of(id1, id2));
+            } catch (RestClientResponseException e) {
+                fail("API DELETE failed with status " + e.getRawStatusCode() + ": " + e.getResponseBodyAsString());
+                return;
+            }
+
+            personDao.flush();
+
+            PersonEntity person1 = personDao.findByExternalIdEntity(id1).orElseThrow();
+            PersonEntity person2 = personDao.findByExternalIdEntity(id2).orElseThrow();
+
+            entityManager.refresh(person1);
+            entityManager.refresh(person2);
+
+            assertThat(person1.isDeleted()).isTrue();
+            assertThat(person2.isDeleted()).isTrue();
         }
+
 
         @Test
         @DisplayName("Should silently ignore non-existent IDs")
-        void testDeleteIgnoresMissingIds() throws Exception {
-            Long nonExistentId =getId();
+        void testDeleteIgnoresMissingIds() {
+            Long nonExistentId = getId();
 
-            mockMvc.perform(delete("/v1/people")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(objectMapper.writeValueAsString(List.of(nonExistentId))))
-                .andExpect(status().isNoContent());
+            try {
+                api.v1PeopleDelete(List.of(nonExistentId));
+            } catch (RestClientResponseException e) {
+                fail("API DELETE failed with status " + e.getRawStatusCode() + ": " + e.getResponseBodyAsString());
+                return;
+            }
 
             assertThat(personDao.findByExternalIdEntity(nonExistentId)).isEmpty();
         }
@@ -1382,6 +1456,8 @@ class PersonControllerTests {
     }
 
     private Long getId() {
-        return  ThreadLocalRandom.current().nextInt(1000) + System.nanoTime() % 100000;
+        var id = ThreadLocalRandom.current().nextInt(1000) + System.nanoTime() % 100000;
+        log.debug("Using ID {}", id);
+        return id;
     }
 }

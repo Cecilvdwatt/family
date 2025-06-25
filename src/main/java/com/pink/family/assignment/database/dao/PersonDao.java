@@ -77,70 +77,67 @@ public class PersonDao {
             .collect(Collectors.toSet());
     }
 
-    @Transactional
+    @Transactional()
     public PersonDto updatePerson(
         Long externalId,
         String name,
         LocalDate dateOfBirth,
         Map<RelationshipType, Set<Long>> relatedIdsByType
     ) {
+        // Find existing main entity
+        Optional<PersonEntity> existingMainOpt = findByExternalIdEntity(externalId);
+        log.debug("Found Person(s) {}", existingMainOpt);
 
-        Optional<PersonEntity> mainEntitySet = personRepository.findByExternalId(externalId);
-
-        log.debug("Found Person(s) {}", mainEntitySet);
-
-        PersonEntity mainEntity = null;
-
-        if (mainEntitySet.isEmpty()) {
-            log.debug("Found empty person. Constructing new one");
-            mainEntity = PersonEntity.builder().externalId(externalId).build();
-        } else if (mainEntitySet.isPresent()) {
-            mainEntity = mainEntitySet.get();
-
-            if(mainEntity.isDeleted()) {
-                return  null;
+        PersonEntity mainEntity;
+        if (existingMainOpt.isPresent()) {
+            mainEntity = existingMainOpt.get();
+            if (mainEntity.isDeleted()) {
+                return null;
             }
-
         } else {
-            throw new PinkSystemException(PersonService.Constants.ErrorMsg.NO_DISTINCT_RECORD);
+            log.debug("Found empty person. Constructing new one");
+            mainEntity = PersonEntity.builder().externalId(externalId).deleted(false).build();
         }
 
         log.debug("Using {}", mainEntity);
         log.debug("Using Relationships: {}", relatedIdsByType);
 
-        // Collect all related IDs from the map
+        // Collect all related IDs from the update request
         Set<Long> allIds = relatedIdsByType.values().stream()
             .flatMap(Set::stream)
+            .filter(e -> !Objects.equals(e, externalId))
             .collect(Collectors.toSet());
 
         log.debug("All IDs: {}", allIds);
 
         // Fetch all related persons from DB
-        Set<PersonEntity> foundPersons = personRepository.findByExternalIdIn(allIds);
+        Set<PersonEntity> existingRelated = personRepository.findByExternalIdIn(allIds);
+        log.debug("Found existing related Persons: {}", existingRelated);
 
-        log.debug("Found Person(s):\n {}", foundPersons);
+        // Build full set of persons to save (existing related + new ones)
+        Set<PersonEntity> allPersons = new HashSet<>(existingRelated);
 
-        // Add missing related persons as new entities (not saved yet)
-        Set<PersonEntity> allPersons = new HashSet<>(foundPersons);
+        // Add any missing persons that are referenced but do not exist yet
         for (Long id : allIds) {
-
-            boolean exists
-                = allPersons.stream()
+            boolean exists = existingRelated.stream()
                 .anyMatch(p -> Objects.equals(p.getExternalId(), id));
-
             if (!exists) {
                 log.debug("Did Not Find Person with id {}. Will add.", id);
-                allPersons.add(PersonEntity.builder().externalId(id).build());
+                allPersons.add(PersonEntity.builder().externalId(id).deleted(false).build());
             }
         }
 
-        // Update mainEntity's name and DOB if provided
+        // Add main entity to the list to persist
+        allPersons.add(mainEntity);
+
+        // Update mainEntity properties if provided
         if (!ObjectUtils.isEmpty(name)) {
             log.debug("Updated Person with name {}", name);
             mainEntity.setName(name);
         } else {
             log.debug("Not Updating name");
         }
+
         if (dateOfBirth != null) {
             log.debug("Updated Person with dateOfBirth {}", dateOfBirth);
             mainEntity.setDateOfBirth(dateOfBirth);
@@ -148,46 +145,54 @@ public class PersonDao {
             log.debug("Not Updating dateOfBirth");
         }
 
-        // Add main entity to all persons for saving
-        allPersons.add(mainEntity);
+        // Save only new persons (those without internalId)
+        Set<PersonEntity> newPersons = allPersons.stream()
+            .filter(p -> p.getInternalId() == null)
+            .collect(Collectors.toSet());
 
-        // Save all persons, get managed entities back
-        List<PersonEntity> savedPersons = personRepository.saveAll(new HashSet<>(allPersons));
-        Map<Long, PersonEntity> personById
-            = savedPersons
-                .stream()
-                .collect(Collectors.toMap(PersonEntity::getExternalId, Function.identity()));
+        if (!newPersons.isEmpty()) {
+            saveAll(newPersons.stream().toList());
+        }
 
-        // Add relationships using managed entities only, for all relationship types dynamically
+        // Refresh all persons from DB to get managed instances with IDs
+        Set<PersonEntity> refreshedPersons = personRepository.findByExternalIdIn(
+            allPersons.stream()
+                .map(PersonEntity::getExternalId)
+                .collect(Collectors.toSet())
+        );
+
+        Map<Long, PersonEntity> personById = refreshedPersons.stream()
+            .collect(Collectors.toMap(PersonEntity::getExternalId, Function.identity()));
+
+        mainEntity = personById.get(externalId); // assign managed main entity
+
+        // Collect existing relationships keys to avoid duplicates
+        Set<String> existingRelKeys = mainEntity.getRelationships().stream()
+            .map(r -> r.getId().getRelationshipType().name() + "-" + r.getRelatedPerson().getExternalId())
+            .collect(Collectors.toSet());
+
+        // Add new relationships from update, preserve existing ones not mentioned
         for (Map.Entry<RelationshipType, Set<Long>> entry : relatedIdsByType.entrySet()) {
-
             RelationshipType relType = entry.getKey();
             Set<Long> ids = entry.getValue();
-
-            log.debug("Processing Relations {} with {}", relType, ids);
-
-            if (ids == null) {
-                continue;
-            }
+            if (ids == null) continue;
 
             for (Long id : ids) {
                 PersonEntity related = personById.get(id);
-                if (related == null) {
-                    continue;
-                };
+                if (related == null) continue;
 
-                // Add relationship with proper inverse
-                mainEntity.addRelationship(related, relType, relType.getInverse());
+                String key = relType.name() + "-" + id;
+                if (!existingRelKeys.contains(key)) {
+                    mainEntity.addRelationship(related, relType, relType.getInverse());
+                    existingRelKeys.add(key);
+                }
             }
         }
-
-        // Save relationships (managed entities only)
-        //personRelationshipDao.saveAll(new HashSet<>(mainEntity.getRelationships()));
 
         // Map to DTO without relationships first
         PersonDto mainDto = PersonDbMapper.mapDtoNoRel(mainEntity);
 
-        // Add relationship DTOs to main DTO dynamically, using inverse relationship
+        // Add relationship DTOs dynamically
         relatedIdsByType.forEach((relType, ids) -> {
             if (ids == null) return;
 
@@ -198,10 +203,14 @@ public class PersonDao {
                 .forEach(dto -> mainDto.addRelationship(relType, dto));
         });
 
-        log.debug("Updated Entity {}", mainEntity.prettyPrint());
+        // Save just to be sure.
+        saveAndFlush(mainEntity);
 
+        log.debug("Updated Entity:\n{}", mainEntity.prettyPrint());
+        log.debug("Returning DTO:\n{}", mainDto.prettyPersonDtoString());
         return mainDto;
     }
+
 
 
     @Transactional
@@ -285,10 +294,13 @@ public class PersonDao {
             .collect(Collectors.toSet());
 
         personRelationshipDao.saveAll(allRelationships);
+        personRelationshipDao.flush();
+
         log.info("Saved {} relationships", allRelationships.size());
 
         // Save all persons
         List<PersonEntity> savedPersons = personRepository.saveAll(persons);
+        personRepository.flush();
         log.info("Saved {} PersonEntity records", savedPersons.size());
 
         return savedPersons;

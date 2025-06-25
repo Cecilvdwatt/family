@@ -113,7 +113,9 @@ public class PersonDto {
         sb.append(indent)
             .append("Person: ").append(this.getName())
             .append(" (ExternalId: ").append(this.getExternalId()).append(")")
-            .append(" (InternalId: ").append(this.getInternalId()).append(")\n");
+            .append(" (InternalId: ").append(this.getInternalId()).append(")")
+            .append(" (Deleted:").append(this.deleted)
+            .append(")\n");
 
         for (var entry : this.getRelations().entrySet()) {
             RelationshipType relType = entry.getKey();

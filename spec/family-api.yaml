@@ -23,8 +23,9 @@ paths:
                 format: int64
               example: [ 101, 102, 103 ]
       responses:
-        '204':
+        '200':
           description: Successfully deleted (or already deleted) and remembered.
+          content: {}
         '400':
           description: Invalid input format
           content:
@@ -70,6 +71,7 @@ paths:
           description:
             The response code returned if - 
             The person submitted in the API has 3 children with their partner and one of the children is under 18.
+          content: {}
         '444': # NO RESPONSE
           description:
             The response code returned if -

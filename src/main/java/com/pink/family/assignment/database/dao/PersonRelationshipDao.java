@@ -7,7 +7,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.CollectionUtils;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -25,7 +27,11 @@ public class PersonRelationshipDao {
 
     @Transactional
     public List<PersonRelationshipEntity> saveAll(Set<PersonRelationshipEntity> relationships) {
-        log.debug("Saving batch of {} PersonRelationshipEntity records", relationships.size());
+        log.debug("Saving batch of PersonRelationshipEntity records:\n{}", relationships);
+
+        if(CollectionUtils.isEmpty(relationships)) {
+            return new ArrayList<>();
+        }
 
         // Validate all relationships
         List<PersonRelationshipEntity> invalidRels = relationships.stream()

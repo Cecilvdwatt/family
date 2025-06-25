@@ -43,7 +43,7 @@ public class PersonEntity {
      */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "id", updatable = false)
+    @Column(name = "internal_id", updatable = false)
     private Long internalId;
     /**
      * External ID, the assignment wasn't specific, so
@@ -52,16 +52,17 @@ public class PersonEntity {
      * so the uniqueness cannot be guaranteed.
      */
 
-    @Column(unique = true)
+    @Column(name = "external_id")
     private Long externalId;
 
-    @Column(updatable=false)
+    @Column(name = "person_name")
     private String name;
 
-    @Column(updatable=false)
+    @Column(name = "person_date_of_birth")
     private LocalDate dateOfBirth;
 
-    @Column(nullable = false, updatable=false)
+    @Builder.Default
+    @Column(name = "person_deleted", nullable = false)
     private boolean deleted = false;
 
     @OneToMany(
@@ -111,6 +112,8 @@ public class PersonEntity {
 
         // Forward relationship
         PersonRelationshipId id = new PersonRelationshipId(this.getInternalId(), relatedPerson.getInternalId(), type);
+
+        log.debug("Forward Relationship Id: {}", id);
         PersonRelationshipEntity forwardRel = this.relationships.stream()
             .filter(r -> r.getId().equals(id))
             .findFirst()
@@ -125,10 +128,13 @@ public class PersonEntity {
         }
 
         // Inverse relationship
-        PersonRelationshipId inverseId = new PersonRelationshipId(relatedPerson.getInternalId(),
+        PersonRelationshipId inverseId = new PersonRelationshipId(
+            relatedPerson.getInternalId(),
             this.getInternalId(),
             inverseType
         );
+
+        log.debug("Backwards Id: {}", inverseId);
         PersonRelationshipEntity inverseRel = relatedPerson.relationships.stream()
             .filter(r -> r.getId().equals(inverseId))
             .findFirst()
@@ -194,7 +200,9 @@ public class PersonEntity {
             .append("PersonEntity: ")
             .append(name).append(" (internalId=").append(internalId)
             .append(", externalId=").append(externalId)
-            .append(", dob=").append(dateOfBirth).append(")\n");
+            .append(", dob=").append(dateOfBirth).append(")")
+            .append(", deleted=").append(deleted)
+            .append("\n");
 
         if (relationships != null && !relationships.isEmpty()) {
             for (PersonRelationshipEntity rel : relationships) {

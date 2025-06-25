@@ -1,25 +1,37 @@
 package com.pink.family.assignment.database.dao;
 
+import com.pink.family.api.rest.client.ApiClient;
+import com.pink.family.api.rest.client.reference.DefaultApi;
 import com.pink.family.assignment.database.entity.PersonEntity;
 import com.pink.family.assignment.database.entity.PersonRelationshipEntity;
 import com.pink.family.assignment.database.entity.id.PersonRelationshipId;
 import com.pink.family.assignment.database.entity.enums.RelationshipType;
 
 import com.pink.family.assignment.dto.PersonDto;
+import jakarta.persistence.EntityManager;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ThreadLocalRandom;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+
+@TestMethodOrder(MethodOrderer.MethodName.class)
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @SpringBootTest
 @Transactional
 public class PersonDaoTests {
@@ -29,6 +41,17 @@ public class PersonDaoTests {
 
     @Autowired
     private PersonRelationshipDao relationshipDao;
+
+    @Autowired
+    EntityManager entityManager;
+
+    @BeforeEach
+    void setUp() {
+
+        relationshipDao.deleteAll();
+        personDao.deleteAll();
+        entityManager.flush();
+    }
 
     @Test
     void testCreateAndReadPerson() {
@@ -256,10 +279,10 @@ public class PersonDaoTests {
         @Transactional
         void shouldCreatePersonWithRelationships() {
             // Given
-            Long mainId = 100L+ System.nanoTime() % 100000;
-            Long parentId = 200L+ System.nanoTime() % 100000;
-            Long childId = 300L+ System.nanoTime() % 100000;
-            Long partnerId = 400L+ System.nanoTime() % 100000;
+            Long mainId = getId();
+            Long parentId = getId();
+            Long childId = getId();
+            Long partnerId = getId();
 
             PersonDto result = personDao.updatePerson(
                 mainId,
@@ -286,20 +309,28 @@ public class PersonDaoTests {
 
         @Test
         public void testUpdatePerson_WithOneChild_ShouldCreateChildRelationship() {
-            // Given: create and save the child person
-            PersonEntity child = new PersonEntity();
-            child.setExternalId(201L);
-            child.setName("Child Person");
-            child.setDateOfBirth(LocalDate.of(2012, 3, 15));
-            personDao.save(child);
 
-            // When: call updatePerson with 1 child relationship
-            Long parentExternalId = 200L+ System.nanoTime() % 100000;
-            Map<RelationshipType, Set<Long>> relatedIdsByType = Map.of(
-                RelationshipType.CHILD, Set.of(201L+ System.nanoTime() % 100000)
+            assertThat(personDao.findAll()).isEmpty();
+            // Given: create and save the child person
+
+            Long childId = getId();
+            var child = personDao.save(
+                            PersonEntity
+                                .builder()
+                                .externalId(childId)
+                                .name("Child Person")
+                                .dateOfBirth(LocalDate.of(2012, 3, 15))
+                                .deleted(false)
+                                .build()
             );
 
-            PersonDto result = personDao.updatePerson(
+            // When: call updatePerson with 1 child relationship
+            Long parentExternalId = getId();
+            Map<RelationshipType, Set<Long>> relatedIdsByType = Map.of(
+                RelationshipType.CHILD, Set.of(childId)
+            );
+
+            personDao.updatePerson(
                 parentExternalId,
                 "Parent Person",
                 LocalDate.of(1980, 5, 5),
@@ -326,7 +357,7 @@ public class PersonDaoTests {
         @Transactional
         void shouldUpdatePersonNameAndDob() {
             // Create person first
-            Long externalId = 555L+ System.nanoTime() % 100000;
+            Long externalId = getId();
             personDao.updatePerson(
                 externalId,
                 "Initial", LocalDate.of(2000, 1, 1), Map.of());
@@ -342,5 +373,9 @@ public class PersonDaoTests {
         }
 
 
+    }
+
+    private Long getId() {
+        return ThreadLocalRandom.current().nextInt(1000) + System.nanoTime() % 100000;
     }
 }

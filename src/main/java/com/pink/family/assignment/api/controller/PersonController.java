@@ -12,6 +12,7 @@ import com.pink.family.assignment.service.LoggingService;
 import com.pink.family.assignment.service.PersonService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.ObjectUtils;
@@ -68,7 +69,12 @@ public class PersonController implements V1Api {
     @Override
     public ResponseEntity<Void> v1PeopleDelete(List<Long> requestBody) {
         personService.softDeletePersons(new HashSet<>(requestBody));
-        return ResponseEntity.noContent().build();
+        log.debug("Soft Delete Complete. Responding with no content");
+        return ResponseEntity
+            .ok()
+            .header(HttpHeaders.CONTENT_LENGTH, "0")
+            .contentLength(0)
+            .build();
     }
 
     @Override

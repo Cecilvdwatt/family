@@ -16,6 +16,7 @@ import lombok.*;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
+@ToString
 public class PersonRelationshipId implements Serializable {
 
     @Column(nullable = false)
