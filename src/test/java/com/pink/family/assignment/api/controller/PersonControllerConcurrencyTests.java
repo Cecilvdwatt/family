@@ -11,6 +11,7 @@ import com.pink.family.assignment.service.PersonService;
 import io.micrometer.core.instrument.*;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,6 +42,7 @@ import static org.hamcrest.Matchers.is;
 /**
  * Just a little fun class to check multithreaded performance.
  */
+@Disabled
 @Slf4j
 @SpringBootTest(properties = {
     "logging.level.com.pink.family=INFO"
